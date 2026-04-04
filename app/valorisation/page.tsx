@@ -1,4 +1,5 @@
 import { calculateDCF } from "../dcf"
+import FCFChart from "../components/FCFChart"
 
 async function getFinancials() {
   const res = await fetch("http://localhost:3000/api/financials?company_id=1", {
@@ -59,6 +60,11 @@ export default async function Valorisation() {
         </div>
       </div>
 
+      <FCFChart
+  projectedFCFs={dcf.projectedFCFs}
+  pvFCFs={dcf.pvFCFs}
+  years={[2025, 2026, 2027, 2028, 2029]}
+/>
       {/* Tableau FCF projetés */}
       <div className="bg-white rounded-xl border border-gray-100 mb-6">
         <div className="p-6 border-b border-gray-100">
