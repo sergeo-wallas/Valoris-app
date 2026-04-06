@@ -1,6 +1,6 @@
-import Dashboard from "./components/Dashboard"
-import RatiosTable from "./components/RatiosTable"
-import ESGPanel from "./components/ESGPanel"
+import Dashboard from "../components/Dashboard"
+import RatiosTable from "../components/RatiosTable"
+import ESGPanel from "../components/ESGPanel"
 
 export default function Home() {
   return (

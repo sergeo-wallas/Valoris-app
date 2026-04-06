@@ -1,5 +1,5 @@
-import { calculateDCF } from "../dcf"
-import FCFChart from "../components/FCFChart"
+import { calculateDCF } from "../../dcf"
+import FCFChart from "../../components/FCFChart"
 
 async function getFinancials() {
   const res = await fetch("http://localhost:3000/api/financials?company_id=1", {
@@ -37,6 +37,22 @@ export default async function Valorisation() {
       <h1 className="text-2xl font-semibold text-[#1a3a5c]">Valorisation</h1>
       <p className="text-gray-400 mt-1 mb-8">CAP Cosmetiques · Modèle DCF</p>
 
+{/* Boutons export */}
+<div className="flex gap-3 mb-8">
+  
+    <a href={`/api/pdf?company_id=1`}
+    target="_blank"
+    className="flex items-center gap-2 px-4 py-2 bg-[#1a3a5c] text-white text-sm rounded-lg hover:bg-[#0f2a45] transition"
+  >
+    📄 Télécharger PDF
+  </a>
+  
+    <a href={`/api/export?company_id=1`}
+    className="flex items-center gap-2 px-4 py-2 bg-[#0d7a5f] text-white text-sm rounded-lg hover:bg-[#0a5f4a] transition"
+  >
+    📊 Télécharger Excel
+  </a>
+</div>
       {/* Paramètres */}
       <div className="bg-white rounded-xl border border-gray-100 mb-6 p-6">
         <h2 className="text-lg font-semibold text-[#1a3a5c] mb-4">Paramètres du modèle</h2>
