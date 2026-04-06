@@ -7,9 +7,11 @@ export default function Sidebar() {
   const { companies, selectedCompany, setSelectedCompany } = useCompany()
 
   const links = [
+    { href: "/workspace", label: "Workspace" },
     { href: "/", label: "Dashboard" },
     { href: "/etats-financiers", label: "États financiers" },
     { href: "/valorisation", label: "Valorisation" },
+    { href: "/analyse", label: "Nouvelle analyse" },
   ]
 
   return (

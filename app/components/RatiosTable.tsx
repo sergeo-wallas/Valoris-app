@@ -1,13 +1,13 @@
-async function getFinancials() {
-  const res = await fetch("http://localhost:3000/api/financials?company_id=1", {
+async function getFinancials(companyId: string) {
+  const res = await fetch(`http://localhost:3000/api/financials?company_id=${companyId}`, {
     cache: "no-store"
   })
   return res.json()
 }
 
-export default async function RatiosTable() {
-  const financials = await getFinancials()
-  
+export default async function RatiosTable({ companyId }: { companyId: string }) {
+  const financials = await getFinancials(companyId)
+
   const n = financials.find((f: any) => f.fiscal_year === 2024)
   const n1 = financials.find((f: any) => f.fiscal_year === 2023)
 
