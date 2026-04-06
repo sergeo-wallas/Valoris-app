@@ -1,10 +1,24 @@
 "use client"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { useCompany } from "../context/CompanyContext"
+import { useEffect } from "react"
 
 export default function Sidebar() {
   const pathname = usePathname()
+  const router = useRouter()
   const { companies, selectedCompany, setSelectedCompany } = useCompany()
+
+  // Synchronise le sélecteur avec l'URL
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search)
+      const companyId = params.get("company_id")
+      if (companyId && companies.length > 0) {
+        const company = companies.find(c => c.id === parseInt(companyId))
+        if (company) setSelectedCompany(company)
+      }
+    }
+  }, [companies])
 
   const links = [
     { href: "/workspace", label: "Workspace" },
@@ -30,7 +44,7 @@ export default function Sidebar() {
             const company = companies.find(c => c.id === parseInt(e.target.value))
             if (company) {
               setSelectedCompany(company)
-              window.location.href = `${window.location.pathname}?company_id=${company.id}`
+              window.location.href = `/?company_id=${company.id}`
             }
           }}
           className="w-full bg-white/10 text-white text-xs rounded-lg px-3 py-2 border border-white/20 outline-none cursor-pointer"
@@ -46,8 +60,8 @@ export default function Sidebar() {
       <nav className="flex-1 p-3">
         <p className="text-white/30 text-xs px-2 py-2">Workspace</p>
         {links.map(link => (
-          
-            <a key={link.href}
+          <a
+             key={link.href}
             href={link.href}
             className={`flex items-center px-3 py-2 rounded-lg text-sm mb-1 ${
               pathname === link.href
