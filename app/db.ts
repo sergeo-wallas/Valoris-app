@@ -152,9 +152,35 @@ db.exec(`
 `)
 
 // Migration : ajoute owner_email si la colonne n'existe pas encore
-const cols = db.prepare("PRAGMA table_info(Company)").all() as { name: string }[]
-if (!cols.some(c => c.name === "owner_email")) {
+const companyCols = db.prepare("PRAGMA table_info(Company)").all() as { name: string }[]
+if (!companyCols.some(c => c.name === "owner_email")) {
   db.exec("ALTER TABLE Company ADD COLUMN owner_email TEXT")
+}
+
+// Migration : nouvelles colonnes FinancialStatement
+const fsCols = db.prepare("PRAGMA table_info(FinancialStatement)").all() as { name: string }[]
+const fsNewCols: [string, string][] = [
+  ["stocks",             "REAL"],
+  ["accounts_receivable","REAL"],
+  ["accounts_payable",   "REAL"],
+  ["fixed_assets",       "REAL"],
+  ["current_assets",     "REAL"],
+  ["sga",                "REAL"],
+  ["fr",                 "REAL"],
+  ["dso",                "REAL"],
+  ["dpo",                "REAL"],
+  ["dio",                "REAL"],
+  ["roic",               "REAL"],
+  ["roe",                "REAL"],
+  ["roa",                "REAL"],
+  ["interest_coverage",  "REAL"],
+  ["cash_conversion",    "REAL"],
+  ["capex_intensity",    "REAL"],
+]
+for (const [col, type] of fsNewCols) {
+  if (!fsCols.some(c => c.name === col)) {
+    db.exec(`ALTER TABLE FinancialStatement ADD COLUMN ${col} ${type}`)
+  }
 }
 
 export default db

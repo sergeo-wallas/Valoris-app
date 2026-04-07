@@ -1,7 +1,8 @@
 "use client"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Search, Check, SlidersHorizontal, ArrowRight, ArrowLeft, X } from "lucide-react"
+import { Search, Check, SlidersHorizontal, ArrowRight, ArrowLeft, X, Upload, FileText } from "lucide-react"
+import FinancialUploader from "../../components/FinancialUploader"
 
 type Step = 1 | 2 | 3
 
@@ -12,6 +13,8 @@ export default function Analyse() {
   const [sireneData, setSireneData] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [showFinancials, setShowFinancials] = useState(false)
+  const [showUploader, setShowUploader] = useState(false)
   const [wacc, setWacc] = useState("9.5")
   const [g, setG] = useState("2.0")
   const [years, setYears] = useState("5")
@@ -71,7 +74,7 @@ export default function Analyse() {
       })
       const data = await res.json()
       setCompany({ ...company, id: data.id })
-      setStep(3)
+      setShowFinancials(true)
     } catch {
       setError("Erreur lors de la création")
     } finally {
@@ -226,7 +229,11 @@ export default function Analyse() {
 
       {/* STEP 2 — VÉRIFICATION */}
       {step === 2 && company && (
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-8 max-w-lg">
+        <div className="space-y-6 max-w-lg">
+
+        {/* Bloc vérification entreprise */}
+        {!showFinancials && (
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-8">
           <h2 className="text-lg font-semibold text-slate-900 mb-1">Vérification des données</h2>
           <p className="text-sm text-slate-400 mb-6">Vérifiez et complétez les informations de l'entreprise</p>
 
@@ -320,6 +327,54 @@ export default function Analyse() {
               <ArrowLeft size={14} /> Retour
             </button>
           </div>
+        </div>
+        )} {/* fin !showFinancials */}
+
+        {/* Section États financiers — apparaît après confirmation entreprise */}
+        {showFinancials && (
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-8">
+
+            {/* En-tête section */}
+            <div className="flex items-start justify-between mb-6">
+              <div>
+                <p className="text-xs font-semibold text-[#0d7a5f] uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#0d7a5f]" />
+                  {company.name}
+                </p>
+                <h2 className="text-lg font-semibold text-slate-900">États financiers</h2>
+                <p className="text-sm text-slate-400 mt-0.5">
+                  Formats acceptés : PDF liasse fiscale, Excel bilan
+                </p>
+              </div>
+              <FileText size={20} className="text-slate-300 mt-1" />
+            </div>
+
+            {/* Uploader ou bouton import */}
+            {showUploader ? (
+              <FinancialUploader
+                companyId={company.id}
+                onComplete={() => setStep(3)}
+              />
+            ) : (
+              <div className="space-y-3">
+                <button
+                  onClick={() => setShowUploader(true)}
+                  className="w-full flex items-center justify-center gap-2.5 bg-[#1a3a5c] text-white py-3.5 rounded-xl text-sm font-medium hover:bg-[#0f2a45] transition-all shadow-sm"
+                >
+                  <Upload size={16} /> Importer un document
+                </button>
+                <button
+                  onClick={() => setStep(3)}
+                  className="w-full flex items-center justify-center gap-1.5 text-sm text-slate-500 py-2.5 hover:text-slate-700 transition-colors"
+                >
+                  Saisie manuelle <ArrowRight size={13} />
+                </button>
+              </div>
+            )}
+
+          </div>
+        )}
+
         </div>
       )}
 
