@@ -1,9 +1,19 @@
 import { NextResponse } from "next/server"
 import * as XLSX from "xlsx"
+import { PDFDocument } from "pdf-lib"
+
+const MAX_PAGES = 30
 
 const SYSTEM_PROMPT = `Tu es un expert-comptable français spécialisé en analyse financière PCG.
 Analyse ce document financier et extrait toutes les données disponibles
 pour chaque année fiscale (N, N-1, N-2, N-3 si disponibles).
+
+IMPORTANT : Toutes les valeurs monétaires doivent être exprimées en EUROS (€) entiers.
+Si le document présente des valeurs en k€, multiplie par 1 000.
+Si le document présente des valeurs en M€, multiplie par 1 000 000.
+Les ratios (tax_rate, roic, roe, roa, cash_conversion, capex_intensity) sont exprimés en décimal (ex: 0.25 pour 25%).
+Les délais (dso, dpo, dio) sont exprimés en nombre de jours.
+Les multiples (interest_coverage) sont exprimés en valeur absolue.
 
 Réponds UNIQUEMENT en JSON valide :
 {
@@ -63,7 +73,20 @@ export async function POST(request: Request) {
     let messages: object[]
 
     if (isPdf) {
-      const base64 = buffer.toString("base64")
+      // Charge le PDF et tronque si nécessaire
+      const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true })
+      const totalPages = pdfDoc.getPageCount()
+
+      let pdfBuffer = buffer
+      if (totalPages > MAX_PAGES) {
+        const trimmed = await PDFDocument.create()
+        const pagesToCopy = await trimmed.copyPages(pdfDoc, Array.from({ length: MAX_PAGES }, (_, i) => i))
+        pagesToCopy.forEach((p: import("pdf-lib").PDFPage) => trimmed.addPage(p))
+        const trimmedBytes = await trimmed.save()
+        pdfBuffer = Buffer.from(trimmedBytes)
+      }
+
+      const base64 = pdfBuffer.toString("base64")
       messages = [
         {
           role: "user",

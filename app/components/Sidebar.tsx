@@ -174,11 +174,14 @@ export default function Sidebar() {
             <div className="space-y-0.5">
               {section.links.map(link => {
                 const Icon = link.icon
-                const isActive = pathname === link.href
+                const isActive = pathname === link.href || pathname === link.href.split("?")[0]
+                const href = selectedCompany && link.href !== "/workspace" && link.href !== "/analyse"
+                  ? `${link.href}?company_id=${selectedCompany.id}`
+                  : link.href
                 return (
                   <a
                     key={link.href}
-                    href={link.href}
+                    href={href}
                     className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-150 group ${
                       isActive
                         ? "bg-white/10 text-white"

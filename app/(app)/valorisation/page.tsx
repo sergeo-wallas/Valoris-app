@@ -6,7 +6,11 @@ import { cookies } from "next/headers"
 
 const DEFAULT_WACC = { wacc: 0.095, scenario: "base" }
 
-export default async function Valorisation() {
+export default async function Valorisation({
+  searchParams,
+}: {
+  searchParams: Promise<{ company_id?: string }>
+}) {
   const cookieStore = await cookies()
   const email = decodeURIComponent(cookieStore.get("valoris_email")?.value ?? "")
 
@@ -37,7 +41,10 @@ export default async function Valorisation() {
     )
   }
 
-  const company = userCompanies[0]
+  const sp = await searchParams
+  const requestedId = sp.company_id ? parseInt(sp.company_id) : null
+  const company = (requestedId && userCompanies.find((c: any) => c.id === requestedId))
+    ?? userCompanies[0]
   const companyId = company.id
 
   const financials = db.prepare(
@@ -78,7 +85,7 @@ export default async function Valorisation() {
   const formatPct = (n: number) => `${(n * 100).toFixed(1)}%`
   const years = [2025, 2026, 2027, 2028, 2029]
 
-  const params = [
+  const displayParams = [
     { label: "WACC base",           value: formatPct(waccData.wacc),  sub: "Taux d'actualisation" },
     { label: "Croissance terminale", value: "2.0%",                    sub: "Taux perpetuel g" },
     { label: "FCF de référence",    value: formatM(dcf.baseFCF),       sub: "Free Cash Flow N" },
@@ -122,7 +129,7 @@ export default async function Valorisation() {
 
       {/* PARAMÈTRES */}
       <div className="grid grid-cols-4 gap-4 mb-6">
-        {params.map(p => (
+        {displayParams.map((p: { label: string; value: string; sub: string }) => (
           <div key={p.label} className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
             <p className="text-[10px] font-medium text-slate-400 uppercase tracking-widest mb-2">{p.label}</p>
             <p className="text-2xl font-bold text-slate-900 tabular-nums">{p.value}</p>

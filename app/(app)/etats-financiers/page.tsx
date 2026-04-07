@@ -1,5 +1,6 @@
 "use client"
 import { useEffect, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { BarChart2 } from "lucide-react"
 import {
   BarChart, Bar, LineChart, Line,
@@ -38,8 +39,10 @@ export default function EtatsFinanciers() {
   const [loading, setLoading] = useState(true)
   const [noCompany, setNoCompany] = useState(false)
   const [activeTab, setActiveTab] = useState<Tab>("cr")
+  const searchParams = useSearchParams()
 
   useEffect(() => {
+    const companyIdParam = searchParams.get("company_id")
     const raw = localStorage.getItem("valoris_user")
     const email = raw ? JSON.parse(raw).email : null
     const companiesUrl = email ? `/api/companies?email=${encodeURIComponent(email)}` : "/api/companies"
@@ -52,8 +55,10 @@ export default function EtatsFinanciers() {
           setLoading(false)
           return
         }
-        setCompanyName(companies[0].name)
-        return fetch(`/api/financials?company_id=${companies[0].id}`)
+        const company = (companyIdParam && companies.find((c: any) => c.id === parseInt(companyIdParam)))
+          ?? companies[0]
+        setCompanyName(company.name)
+        return fetch(`/api/financials?company_id=${company.id}`)
           .then(r => r.json())
           .then(data => {
             const sorted = [...data].sort((a: any, b: any) => a.fiscal_year - b.fiscal_year)
@@ -61,7 +66,7 @@ export default function EtatsFinanciers() {
             setLoading(false)
           })
       })
-  }, [])
+  }, [searchParams])
 
   if (loading) return (
     <main className="flex-1 bg-[#f4f7fb] p-8">

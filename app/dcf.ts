@@ -24,20 +24,24 @@ export interface FinancialStatement {
     const latest = financials[0]
     
     // 2. On calcule le FCF historique de référence
-    // FCF = EBIT × (1 - IS) + D&A - Capex - ΔBFR
-    // Simplification : on utilise le FCF déjà calculé si disponible
-    const baseFCF = latest.fcf ?? (
-      latest.ebit * (1 - latest.tax_rate) 
-      - (latest.capex ?? 0) 
-      - (latest.delta_wc ?? 0)
-    )
-  
+    // Priorité : FCF direct → EBITDA*(1-t)-Capex-ΔBFR → EBIT*(1-t)-Capex-ΔBFR → 0
+    const t = latest.tax_rate ?? 0.25
+    const capex = latest.capex ?? 0
+    const dwc = latest.delta_wc ?? 0
+    const baseFCF = latest.fcf != null
+      ? latest.fcf
+      : latest.ebitda != null
+        ? latest.ebitda * (1 - t) - capex - dwc
+        : latest.ebit != null
+          ? latest.ebit * (1 - t) - capex - dwc
+          : 0
+
     // 3. On calcule le taux de croissance historique du CA
     const sorted = [...financials].sort((a, b) => a.fiscal_year - b.fiscal_year)
     const oldest = sorted[0]
     const years = latest.fiscal_year - oldest.fiscal_year
-    const cagr = years > 0 
-      ? Math.pow(latest.revenue / oldest.revenue, 1 / years) - 1 
+    const cagr = years > 0 && oldest.revenue && latest.revenue
+      ? Math.pow(latest.revenue / oldest.revenue, 1 / years) - 1
       : 0.05
   
     // 4. On projette les FCF sur N années
