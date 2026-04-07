@@ -114,7 +114,7 @@ export default function FinancialUploader({ companyId, onComplete }: Props) {
       const data = await res.json()
 
       if (!res.ok || data.error) {
-        setErrorMsg(data.error ?? "Erreur d'extraction")
+        setErrorMsg(data.detail ?? data.error ?? "Erreur d'extraction")
         setStatus("error")
         return
       }
