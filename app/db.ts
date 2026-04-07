@@ -16,6 +16,7 @@ db.exec(`
     country     TEXT DEFAULT 'France',
     headcount   INTEGER,
     legal_form  TEXT,
+    owner_email TEXT,
     createdAt   TEXT DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -91,6 +92,69 @@ db.exec(`
     FOREIGN KEY (company_id) REFERENCES Company(id)
   );
 
+  -- Table 6 : Cibles de sourcing (investisseur)
+  CREATE TABLE IF NOT EXISTS Target (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    siren         TEXT NOT NULL,
+    name          TEXT NOT NULL,
+    sector        TEXT,
+    legal_form    TEXT,
+    naf_code      TEXT,
+    headcount     TEXT,
+    status        TEXT DEFAULT 'prospect',
+    note          TEXT,
+    owner_email   TEXT,
+    createdAt     TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Table 7 : Positions portefeuille (investisseur)
+  CREATE TABLE IF NOT EXISTS Position (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    name          TEXT NOT NULL,
+    sector        TEXT,
+    date_entree   TEXT NOT NULL,
+    date_sortie   TEXT,
+    mise          REAL NOT NULL,
+    valeur        REAL,
+    statut        TEXT DEFAULT 'actif',
+    note          TEXT,
+    owner_email   TEXT,
+    createdAt     TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Table 8 : Comparables personnalisés (investisseur)
+  CREATE TABLE IF NOT EXISTS Comparable (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL,
+    sector      TEXT,
+    ev_ebitda   REAL,
+    ev_revenue  REAL,
+    pe          REAL,
+    ev_ebit     REAL,
+    note        TEXT,
+    owner_email TEXT,
+    createdAt   TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Table 8 : Deals pipeline (investisseur)
+  CREATE TABLE IF NOT EXISTS Deal (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    name          TEXT NOT NULL,
+    siren         TEXT,
+    sector        TEXT,
+    stage         TEXT DEFAULT 'analyse',
+    ev_cible      REAL,
+    note          TEXT,
+    owner_email   TEXT,
+    createdAt     TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+
 `)
+
+// Migration : ajoute owner_email si la colonne n'existe pas encore
+const cols = db.prepare("PRAGMA table_info(Company)").all() as { name: string }[]
+if (!cols.some(c => c.name === "owner_email")) {
+  db.exec("ALTER TABLE Company ADD COLUMN owner_email TEXT")
+}
 
 export default db

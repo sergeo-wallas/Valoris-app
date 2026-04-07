@@ -14,7 +14,7 @@ export default function AppLayout({
   useEffect(() => {
     const user = localStorage.getItem("valoris_user")
     if (!user) {
-      router.push("/workspace")
+      router.push("/login")
     }
   }, [router])
 

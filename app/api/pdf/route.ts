@@ -293,6 +293,62 @@ export async function GET(request: Request) {
 </html>
 `
 
+  // ── Recommandations IA ──────────────────────────────────────
+  let recoHtml = ""
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
+    const recoRes = await fetch(
+      `${baseUrl}/api/ai/recommendations?company_id=${company_id}`,
+      { signal: AbortSignal.timeout(15000) }
+    )
+    if (recoRes.ok) {
+      const recoData = await recoRes.json()
+      const recos: any[] = recoData.recommendations ?? []
+      const isPlaceholder = recoData.source === "placeholder"
+
+      const priorityColor: Record<string, string> = {
+        haute: "#ef4444", moyenne: "#f59e0b", faible: "#0d7a5f"
+      }
+      const categoryColor: Record<string, string> = {
+        "Opérationnel": "1a3a5c", "Financier": "0d7a5f",
+        "Stratégique": "7c3aed", "Risques": "dc2626"
+      }
+
+      recoHtml = `
+<div style="page-break-before:always;"></div>
+<div style="background:#0a1929; padding:40px 50px; min-height:120px;">
+  <div style="font-size:11px; color:rgba(255,255,255,0.5); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">Analyse stratégique</div>
+  <div style="font-size:28px; font-weight:700; color:white; margin-bottom:4px;">Recommandations</div>
+  <div style="font-size:12px; color:rgba(255,255,255,0.4);">
+    ${isPlaceholder ? "Générées par Valoris · Configurez ANTHROPIC_API_KEY pour une analyse IA personnalisée" : "Générées par l'agent IA Valoris"}
+  </div>
+  <div style="height:4px; background:#0d7a5f; margin-top:24px; border-radius:2px;"></div>
+</div>
+<div style="padding:40px 50px;">
+  ${isPlaceholder ? `<div style="background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:12px 16px; margin-bottom:20px; font-size:10px; color:#78350f;">
+    ⚡ <strong>Mode démonstration</strong> — Définissez ANTHROPIC_API_KEY dans .env.local pour activer les recommandations IA personnalisées.
+  </div>` : ""}
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+    ${recos.map((r: any) => `
+      <div style="border:1px solid #e2e8f0; border-radius:10px; padding:18px; border-top:3px solid #${categoryColor[r.category] ?? "1a3a5c"};">
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+          <span style="font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:#${categoryColor[r.category] ?? "1a3a5c"}; background:#${categoryColor[r.category] ?? "1a3a5c"}18; padding:3px 8px; border-radius:20px;">${r.category}</span>
+          <span style="font-size:9px; font-weight:600; color:${priorityColor[r.priority] ?? "#64748b"};">● ${r.priority}</span>
+        </div>
+        <p style="font-size:12px; font-weight:700; color:#1e293b; margin-bottom:6px;">${r.title}</p>
+        <p style="font-size:10px; color:#475569; line-height:1.6;">${r.body}</p>
+      </div>
+    `).join("")}
+  </div>
+</div>`
+    }
+  } catch {
+    // Recommandations inaccessibles — on continue sans elles
+  }
+
+  // Injecter les recommandations dans le HTML
+  const finalHtml = html.replace("</body>", `${recoHtml}</body>`)
+
   // Génération PDF avec Puppeteer
   const puppeteer = await import("puppeteer")
   const browser = await puppeteer.default.launch({ 
@@ -300,7 +356,7 @@ export async function GET(request: Request) {
     args: ["--no-sandbox", "--disable-setuid-sandbox"]
   })
   const page = await browser.newPage()
-  await page.setContent(html, { waitUntil: "networkidle0" })
+  await page.setContent(finalHtml, { waitUntil: "networkidle0" })
   const pdf = await page.pdf({
     format: "A4",
     printBackground: true,

@@ -26,7 +26,10 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null)
 
   useEffect(() => {
-    fetch("/api/companies")
+    const raw = localStorage.getItem("valoris_user")
+    const email = raw ? JSON.parse(raw).email : null
+    const url = email ? `/api/companies?email=${encodeURIComponent(email)}` : "/api/companies"
+    fetch(url)
       .then(r => r.json())
       .then(data => {
         setCompanies(data)

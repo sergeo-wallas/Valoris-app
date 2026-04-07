@@ -1,6 +1,7 @@
 "use client"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { Search, Check, SlidersHorizontal, ArrowRight, ArrowLeft, X } from "lucide-react"
 
 type Step = 1 | 2 | 3
 
@@ -8,6 +9,7 @@ export default function Analyse() {
   const [step, setStep] = useState<Step>(1)
   const [siren, setSiren] = useState("")
   const [company, setCompany] = useState<any>(null)
+  const [sireneData, setSireneData] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [wacc, setWacc] = useState("9.5")
@@ -15,7 +17,12 @@ export default function Analyse() {
   const [years, setYears] = useState("5")
   const router = useRouter()
 
-  // Recherche entreprise via API gouvernementale
+  const TRANCHES: Record<string, string> = {
+    "NN": "Non employeur", "00": "0 salarié", "01": "1–2", "02": "3–5",
+    "03": "6–9", "11": "10–19", "12": "20–49", "21": "50–99",
+    "22": "100–199", "31": "200–249", "32": "250–499", "41": "500–999",
+  }
+
   const searchCompany = async () => {
     if (!siren || siren.length < 9) {
       setError("Le SIREN doit contenir 9 chiffres")
@@ -36,6 +43,11 @@ export default function Analyse() {
           naf_code: r.activite_principale,
           country: "France",
         })
+        // Enrichissement Sirene en parallèle (silencieux)
+        fetch(`/api/sirene?siren=${r.siren}`)
+          .then(res => res.ok ? res.json() : null)
+          .then(d => { if (d?.unite_legale) setSireneData(d.unite_legale) })
+          .catch(() => {})
         setStep(2)
       } else {
         setError("Aucune entreprise trouvée pour ce SIREN")
@@ -47,14 +59,15 @@ export default function Analyse() {
     }
   }
 
-  // Création entreprise en BDD
   const createCompany = async () => {
     setLoading(true)
     try {
+      const raw = localStorage.getItem("valoris_user")
+      const email = raw ? JSON.parse(raw).email : null
       const res = await fetch("/api/companies", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(company)
+        body: JSON.stringify({ ...company, owner_email: email })
       })
       const data = await res.json()
       setCompany({ ...company, id: data.id })
@@ -66,7 +79,6 @@ export default function Analyse() {
     }
   }
 
-  // Lancement analyse
   const launchAnalysis = async () => {
     setLoading(true)
     try {
@@ -98,115 +110,136 @@ export default function Analyse() {
     }
   }
 
+  const steps = [
+    { n: 1, label: "Identification", icon: Search },
+    { n: 2, label: "Vérification",   icon: Check },
+    { n: 3, label: "Paramètres",     icon: SlidersHorizontal },
+  ]
+
   return (
-    <main className="flex-1 bg-gray-50 min-h-screen p-8">
+    <main className="flex-1 bg-[#f4f7fb] min-h-screen p-8">
 
       {/* HEADER */}
-      <div className="mb-10">
-        <p className="text-xs text-gray-400 uppercase tracking-widest mb-2">
-          Nouvelle analyse
-        </p>
-        <h1 className="text-2xl font-serif text-[#1a3a5c]">
-          Analyse d'entreprise
-        </h1>
+      <div className="mb-8">
+        <p className="text-xs font-medium text-slate-400 uppercase tracking-widest mb-2">Nouvelle analyse</p>
+        <h1 className="text-2xl font-bold text-slate-900">Analyse d'entreprise</h1>
       </div>
 
       {/* STEPPER */}
-      <div className="flex items-center gap-0 mb-10">
-        {[
-          { n: 1, label: "Identification" },
-          { n: 2, label: "Vérification" },
-          { n: 3, label: "Paramètres" },
-        ].map((s, i) => (
-          <div key={s.n} className="flex items-center">
-            <div className="flex items-center gap-3">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition ${
-                step === s.n ? "bg-[#1a3a5c] text-white" :
-                step > s.n ? "bg-[#0d7a5f] text-white" :
-                "bg-gray-200 text-gray-400"
-              }`}>
-                {step > s.n ? "✓" : s.n}
+      <div className="flex items-center mb-10">
+        {steps.map((s, i) => {
+          const Icon = s.icon
+          const isActive = step === s.n
+          const isDone = step > s.n
+          return (
+            <div key={s.n} className="flex items-center">
+              <div className="flex items-center gap-3">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 ${
+                  isDone  ? "bg-[#0d7a5f] shadow-sm shadow-[#0d7a5f]/30" :
+                  isActive ? "bg-[#1a3a5c] shadow-sm shadow-[#1a3a5c]/30" :
+                  "bg-white border border-slate-200"
+                }`}>
+                  {isDone
+                    ? <Check size={15} className="text-white" />
+                    : <Icon size={15} className={isActive ? "text-white" : "text-slate-400"} />
+                  }
+                </div>
+                <span className={`text-sm font-medium transition-colors ${
+                  isActive ? "text-slate-900" : isDone ? "text-[#0d7a5f]" : "text-slate-400"
+                }`}>
+                  {s.label}
+                </span>
               </div>
-              <span className={`text-sm ${step === s.n ? "text-[#1a3a5c] font-medium" : "text-gray-400"}`}>
-                {s.label}
-              </span>
+              {i < 2 && (
+                <div className={`h-px mx-5 w-20 transition-colors ${step > s.n ? "bg-[#0d7a5f]/40" : "bg-slate-200"}`} />
+              )}
             </div>
-            {i < 2 && <div className="w-16 h-px bg-gray-200 mx-4"/>}
-          </div>
-        ))}
+          )
+        })}
       </div>
 
-      {/* ÉTAPE 1 — SIREN */}
+      {/* STEP 1 — SIREN */}
       {step === 1 && (
-        <div className="bg-white rounded-xl border border-gray-100 p-8 max-w-lg">
-          <h2 className="text-lg font-serif text-[#1a3a5c] mb-1">Identification de l'entreprise</h2>
-          <p className="text-sm text-gray-400 mb-6">Entrez le numéro SIREN pour récupérer automatiquement les informations</p>
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-8 max-w-lg">
+          <h2 className="text-lg font-semibold text-slate-900 mb-1">Identification de l'entreprise</h2>
+          <p className="text-sm text-slate-400 mb-6 leading-relaxed">
+            Entrez le SIREN pour récupérer automatiquement les informations depuis le registre officiel
+          </p>
 
-          <div className="mb-4">
-            <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2 block">
+          <div className="mb-5">
+            <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-2 block">
               Numéro SIREN
             </label>
-            <input
-              type="text"
-              value={siren}
-              onChange={e => setSiren(e.target.value.replace(/\D/g, "").slice(0, 9))}
-              placeholder="123 456 789"
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-lg font-mono tracking-widest text-[#1a3a5c] outline-none focus:border-[#1a3a5c] focus:ring-2 focus:ring-[#1a3a5c]/10 transition"
-            />
-            <p className="text-xs text-gray-400 mt-2">{siren.length}/9 chiffres</p>
+            <div className="relative">
+              <Search size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={siren}
+                onChange={e => setSiren(e.target.value.replace(/\D/g, "").slice(0, 9))}
+                placeholder="123 456 789"
+                className="w-full border border-slate-200 rounded-xl pl-11 pr-4 py-3.5 text-lg font-mono tracking-widest text-slate-900 outline-none focus:border-[#1a3a5c] focus:ring-2 focus:ring-[#1a3a5c]/8 transition-all bg-slate-50 focus:bg-white"
+              />
+            </div>
+            <div className="flex items-center justify-between mt-2">
+              <p className="text-xs text-slate-400">{siren.length}/9 chiffres</p>
+              {siren.length === 9 && <span className="text-xs text-emerald-600 font-medium">✓ Format valide</span>}
+            </div>
           </div>
 
           {error && (
-            <p className="text-red-500 text-sm mb-4 bg-red-50 px-4 py-2 rounded-lg">{error}</p>
+            <div className="flex items-start gap-2.5 text-red-600 text-sm mb-4 bg-red-50 border border-red-100 px-4 py-3 rounded-xl">
+              <X size={14} className="flex-shrink-0 mt-0.5" />
+              {error}
+            </div>
           )}
 
           <div className="flex gap-3">
             <button
               onClick={searchCompany}
               disabled={loading || siren.length !== 9}
-              className="flex-1 bg-[#1a3a5c] text-white py-3 rounded-xl text-sm font-medium hover:bg-[#0f2a45] transition disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex-1 flex items-center justify-center gap-2 bg-[#1a3a5c] text-white py-3 rounded-xl text-sm font-medium hover:bg-[#0f2a45] transition-all shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {loading ? "Recherche en cours..." : "Rechercher →"}
+              {loading ? "Recherche en cours…" : <>Rechercher <ArrowRight size={14} /></>}
             </button>
             <button
               onClick={() => router.push("/workspace")}
-              className="px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-500 hover:border-gray-300 transition"
+              className="px-4 py-3 border border-slate-200 rounded-xl text-sm text-slate-500 hover:border-slate-300 hover:bg-slate-50 transition-all"
             >
               Annuler
             </button>
           </div>
 
-          <div className="mt-6 pt-6 border-t border-gray-100">
-            <p className="text-xs text-gray-400 mb-3">Ou saisissez manuellement</p>
+          <div className="mt-6 pt-5 border-t border-slate-100">
+            <p className="text-xs text-slate-400 mb-2">Ou saisissez manuellement</p>
             <button
               onClick={() => {
                 setCompany({ siren: "", name: "", sector: "", legal_form: "SAS", naf_code: "", country: "France" })
                 setStep(2)
               }}
-              className="text-sm text-[#1a3a5c] font-medium hover:underline"
+              className="text-sm text-[#1a3a5c] font-medium hover:underline flex items-center gap-1"
             >
-              Saisie manuelle →
+              Saisie manuelle <ArrowRight size={13} />
             </button>
           </div>
         </div>
       )}
 
-      {/* ÉTAPE 2 — VÉRIFICATION */}
+      {/* STEP 2 — VÉRIFICATION */}
       {step === 2 && company && (
-        <div className="bg-white rounded-xl border border-gray-100 p-8 max-w-lg">
-          <h2 className="text-lg font-serif text-[#1a3a5c] mb-1">Vérification des données</h2>
-          <p className="text-sm text-gray-400 mb-6">Vérifiez et complétez les informations de l'entreprise</p>
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-8 max-w-lg">
+          <h2 className="text-lg font-semibold text-slate-900 mb-1">Vérification des données</h2>
+          <p className="text-sm text-slate-400 mb-6">Vérifiez et complétez les informations de l'entreprise</p>
 
           <div className="space-y-4">
             {[
-              { label: "Nom de l'entreprise", key: "name", placeholder: "CAP Cosmetiques" },
-              { label: "SIREN", key: "siren", placeholder: "123456789" },
-              { label: "Secteur", key: "sector", placeholder: "Cosmetique" },
-              { label: "Code NAF", key: "naf_code", placeholder: "2042Z" },
-              { label: "Forme juridique", key: "legal_form", placeholder: "SAS" },
+              { label: "Nom de l'entreprise", key: "name",       placeholder: "CAP Cosmetiques" },
+              { label: "SIREN",               key: "siren",      placeholder: "123456789" },
+              { label: "Secteur d'activité",  key: "sector",     placeholder: "Cosmetique" },
+              { label: "Code NAF",            key: "naf_code",   placeholder: "2042Z" },
+              { label: "Forme juridique",     key: "legal_form", placeholder: "SAS" },
             ].map(field => (
               <div key={field.key}>
-                <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5 block">
+                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1.5 block">
                   {field.label}
                 </label>
                 <input
@@ -214,89 +247,141 @@ export default function Analyse() {
                   value={company[field.key] ?? ""}
                   onChange={e => setCompany({ ...company, [field.key]: e.target.value })}
                   placeholder={field.placeholder}
-                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 outline-none focus:border-[#1a3a5c] focus:ring-2 focus:ring-[#1a3a5c]/10 transition"
+                  className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 outline-none focus:border-[#1a3a5c] focus:ring-2 focus:ring-[#1a3a5c]/8 transition-all bg-slate-50 focus:bg-white"
                 />
               </div>
             ))}
           </div>
 
+          {/* Enrichissement Sirene INSEE */}
+          {sireneData && (
+            <div className="mt-5 bg-[#1a3a5c]/4 border border-[#1a3a5c]/10 rounded-xl p-4">
+              <p className="text-[10px] font-bold text-[#1a3a5c] uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#0d7a5f]" />
+                Données officielles INSEE · Sirene
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  {
+                    label: "Statut",
+                    value: sireneData.etat_administratif_unite_legale === "A"
+                      ? "✓ Active"
+                      : "✗ Cessée",
+                    color: sireneData.etat_administratif_unite_legale === "A"
+                      ? "text-emerald-700"
+                      : "text-red-600",
+                  },
+                  {
+                    label: "Catégorie",
+                    value: sireneData.categorie_entreprise ?? "NC",
+                    color: "text-slate-900",
+                  },
+                  {
+                    label: "Création",
+                    value: sireneData.date_creation_unite_legale
+                      ? new Date(sireneData.date_creation_unite_legale).toLocaleDateString("fr-FR")
+                      : "NC",
+                    color: "text-slate-900",
+                  },
+                  {
+                    label: "Effectifs",
+                    value: TRANCHES[sireneData.tranche_effectif_salaries_unite_legale ?? ""] ?? "NC",
+                    color: "text-slate-900",
+                  },
+                ].map(item => (
+                  <div key={item.label} className="bg-white rounded-lg px-3 py-2.5 border border-slate-100">
+                    <p className="text-[10px] font-medium text-slate-400 uppercase tracking-wide mb-0.5">{item.label}</p>
+                    <p className={`text-sm font-semibold ${item.color}`}>{item.value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {error && (
-            <p className="text-red-500 text-sm mt-4 bg-red-50 px-4 py-2 rounded-lg">{error}</p>
+            <div className="flex items-start gap-2.5 text-red-600 text-sm mt-4 bg-red-50 border border-red-100 px-4 py-3 rounded-xl">
+              <X size={14} className="flex-shrink-0 mt-0.5" />
+              {error}
+            </div>
           )}
 
           <div className="flex gap-3 mt-6">
             <button
               onClick={createCompany}
               disabled={loading || !company.name}
-              className="flex-1 bg-[#1a3a5c] text-white py-3 rounded-xl text-sm font-medium hover:bg-[#0f2a45] transition disabled:opacity-40"
+              className="flex-1 flex items-center justify-center gap-2 bg-[#1a3a5c] text-white py-3 rounded-xl text-sm font-medium hover:bg-[#0f2a45] transition-all shadow-sm disabled:opacity-40"
             >
-              {loading ? "Enregistrement..." : "Confirmer →"}
+              {loading ? "Enregistrement…" : <>Confirmer <ArrowRight size={14} /></>}
             </button>
             <button
               onClick={() => setStep(1)}
-              className="px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-500 hover:border-gray-300 transition"
+              className="flex items-center gap-1.5 px-4 py-3 border border-slate-200 rounded-xl text-sm text-slate-500 hover:border-slate-300 hover:bg-slate-50 transition-all"
             >
-              Retour
+              <ArrowLeft size={14} /> Retour
             </button>
           </div>
         </div>
       )}
 
-      {/* ÉTAPE 3 — PARAMÈTRES */}
+      {/* STEP 3 — PARAMÈTRES */}
       {step === 3 && (
-        <div className="bg-white rounded-xl border border-gray-100 p-8 max-w-lg">
-          <h2 className="text-lg font-serif text-[#1a3a5c] mb-1">Paramètres du modèle</h2>
-          <p className="text-sm text-gray-400 mb-6">Définissez les hypothèses de votre modèle DCF</p>
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-8 max-w-lg">
+          <h2 className="text-lg font-semibold text-slate-900 mb-1">Paramètres du modèle</h2>
+          <p className="text-sm text-slate-400 mb-6">Définissez les hypothèses de votre modèle DCF</p>
 
-          <div className="space-y-5">
+          <div className="space-y-6">
+
+            {/* WACC */}
             <div>
-              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5 block">
-                WACC (%)
-              </label>
-              <div className="flex items-center gap-4">
-                <input
-                  type="range"
-                  min="5" max="20" step="0.5"
-                  value={wacc}
-                  onChange={e => setWacc(e.target.value)}
-                  className="flex-1"
-                />
-                <span className="text-lg font-bold text-[#1a3a5c] w-16 text-right">{wacc}%</span>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">WACC</label>
+                <span className="text-lg font-bold text-[#1a3a5c] tabular-nums">{wacc}%</span>
               </div>
-              <p className="text-xs text-gray-400 mt-1">Taux d'actualisation · Recommandé : 8-12% pour PME</p>
+              <input
+                type="range" min="5" max="20" step="0.5"
+                value={wacc}
+                onChange={e => setWacc(e.target.value)}
+                className="w-full accent-[#1a3a5c]"
+              />
+              <div className="flex justify-between mt-1">
+                <p className="text-xs text-slate-400">5%</p>
+                <p className="text-xs text-slate-400">Recommandé : 8–12% pour PME</p>
+                <p className="text-xs text-slate-400">20%</p>
+              </div>
             </div>
 
+            {/* g */}
             <div>
-              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5 block">
-                Taux de croissance terminal g (%)
-              </label>
-              <div className="flex items-center gap-4">
-                <input
-                  type="range"
-                  min="0" max="5" step="0.5"
-                  value={g}
-                  onChange={e => setG(e.target.value)}
-                  className="flex-1"
-                />
-                <span className="text-lg font-bold text-[#1a3a5c] w-16 text-right">{g}%</span>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Croissance terminale g</label>
+                <span className="text-lg font-bold text-[#1a3a5c] tabular-nums">{g}%</span>
               </div>
-              <p className="text-xs text-gray-400 mt-1">Croissance perpétuelle · Recommandé : 1.5-2.5%</p>
+              <input
+                type="range" min="0" max="5" step="0.5"
+                value={g}
+                onChange={e => setG(e.target.value)}
+                className="w-full accent-[#1a3a5c]"
+              />
+              <div className="flex justify-between mt-1">
+                <p className="text-xs text-slate-400">0%</p>
+                <p className="text-xs text-slate-400">Recommandé : 1.5–2.5%</p>
+                <p className="text-xs text-slate-400">5%</p>
+              </div>
             </div>
 
+            {/* Années */}
             <div>
-              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5 block">
-                Années de projection
-              </label>
+              <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-3 block">Années de projection</label>
               <div className="grid grid-cols-4 gap-2">
                 {["3", "5", "7", "10"].map(y => (
                   <button
                     key={y}
                     type="button"
                     onClick={() => setYears(y)}
-                    className={`py-2 rounded-xl text-sm font-medium border transition ${
+                    className={`py-2.5 rounded-xl text-sm font-semibold border transition-all ${
                       years === y
-                        ? "bg-[#1a3a5c] text-white border-[#1a3a5c]"
-                        : "bg-white text-gray-500 border-gray-200 hover:border-[#1a3a5c]/30"
+                        ? "bg-[#1a3a5c] text-white border-[#1a3a5c] shadow-sm"
+                        : "bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300 hover:bg-white"
                     }`}
                   >
                     {y} ans
@@ -306,43 +391,44 @@ export default function Analyse() {
             </div>
           </div>
 
-          <div className="bg-gray-50 rounded-xl p-4 mt-6">
-            <p className="text-xs text-gray-400 mb-2 uppercase tracking-wide">Récapitulatif</p>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Entreprise</span>
-              <span className="font-medium text-[#1a3a5c]">{company?.name}</span>
-            </div>
-            <div className="flex justify-between text-sm mt-1">
-              <span className="text-gray-600">WACC</span>
-              <span className="font-medium text-[#1a3a5c]">{wacc}%</span>
-            </div>
-            <div className="flex justify-between text-sm mt-1">
-              <span className="text-gray-600">Croissance terminale</span>
-              <span className="font-medium text-[#1a3a5c]">{g}%</span>
-            </div>
-            <div className="flex justify-between text-sm mt-1">
-              <span className="text-gray-600">Projection</span>
-              <span className="font-medium text-[#1a3a5c]">{years} ans</span>
+          {/* RECAP */}
+          <div className="bg-gradient-to-br from-slate-50 to-slate-100/50 rounded-xl p-5 mt-6 border border-slate-100">
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-3">Récapitulatif</p>
+            <div className="space-y-2">
+              {[
+                { label: "Entreprise",           value: company?.name },
+                { label: "WACC",                 value: `${wacc}%` },
+                { label: "Croissance terminale",  value: `${g}%` },
+                { label: "Horizon de projection", value: `${years} ans` },
+              ].map(row => (
+                <div key={row.label} className="flex justify-between items-center">
+                  <span className="text-sm text-slate-500">{row.label}</span>
+                  <span className="text-sm font-semibold text-slate-900">{row.value}</span>
+                </div>
+              ))}
             </div>
           </div>
 
           {error && (
-            <p className="text-red-500 text-sm mt-4 bg-red-50 px-4 py-2 rounded-lg">{error}</p>
+            <div className="flex items-start gap-2.5 text-red-600 text-sm mt-4 bg-red-50 border border-red-100 px-4 py-3 rounded-xl">
+              <X size={14} className="flex-shrink-0 mt-0.5" />
+              {error}
+            </div>
           )}
 
           <div className="flex gap-3 mt-6">
             <button
               onClick={launchAnalysis}
               disabled={loading}
-              className="flex-1 bg-[#0d7a5f] text-white py-3 rounded-xl text-sm font-medium hover:bg-[#0a5f4a] transition disabled:opacity-40"
+              className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-[#0a5040] to-[#0d7a5f] text-white py-3 rounded-xl text-sm font-medium hover:from-[#095040] hover:to-[#0a6a52] transition-all shadow-sm disabled:opacity-40"
             >
-              {loading ? "Génération en cours..." : "Lancer l'analyse →"}
+              {loading ? "Génération en cours…" : <>Lancer l'analyse <ArrowRight size={14} /></>}
             </button>
             <button
               onClick={() => setStep(2)}
-              className="px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-500 hover:border-gray-300 transition"
+              className="flex items-center gap-1.5 px-4 py-3 border border-slate-200 rounded-xl text-sm text-slate-500 hover:border-slate-300 hover:bg-slate-50 transition-all"
             >
-              Retour
+              <ArrowLeft size={14} /> Retour
             </button>
           </div>
         </div>
