@@ -23,6 +23,36 @@ export async function POST(request: Request) {
      sga, fr, capex, delta_wc, fcf,
      dso, dpo, dio, roic, roe, roa, interest_coverage, cash_conversion, capex_intensity)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(company_id, fiscal_year) DO UPDATE SET
+      revenue           = excluded.revenue,
+      gross_margin      = excluded.gross_margin,
+      ebitda            = excluded.ebitda,
+      ebit              = excluded.ebit,
+      net_income        = excluded.net_income,
+      tax_rate          = excluded.tax_rate,
+      total_assets      = excluded.total_assets,
+      fixed_assets      = excluded.fixed_assets,
+      current_assets    = excluded.current_assets,
+      equity            = excluded.equity,
+      net_debt          = excluded.net_debt,
+      stocks            = excluded.stocks,
+      accounts_receivable = excluded.accounts_receivable,
+      accounts_payable  = excluded.accounts_payable,
+      working_capital   = excluded.working_capital,
+      sga               = excluded.sga,
+      fr                = excluded.fr,
+      capex             = excluded.capex,
+      delta_wc          = excluded.delta_wc,
+      fcf               = excluded.fcf,
+      dso               = excluded.dso,
+      dpo               = excluded.dpo,
+      dio               = excluded.dio,
+      roic              = excluded.roic,
+      roe               = excluded.roe,
+      roa               = excluded.roa,
+      interest_coverage = excluded.interest_coverage,
+      cash_conversion   = excluded.cash_conversion,
+      capex_intensity   = excluded.capex_intensity
   `)
 
   const result = stmt.run(

@@ -5,55 +5,32 @@ import { PDFDocument } from "pdf-lib"
 const MAX_PAGES = 30
 
 const SYSTEM_PROMPT = `Tu es un expert-comptable français spécialisé en analyse financière PCG.
-Analyse ce document financier et extrait toutes les données disponibles
-pour chaque année fiscale (N, N-1, N-2, N-3 si disponibles).
+Analyse ce document financier et extrait les 10 indicateurs clés pour chaque année fiscale disponible (N, N-1, N-2, N-3).
 
-IMPORTANT : Toutes les valeurs monétaires doivent être exprimées en EUROS (€) entiers.
-Si le document présente des valeurs en k€, multiplie par 1 000.
-Si le document présente des valeurs en M€, multiplie par 1 000 000.
-Les ratios (tax_rate, roic, roe, roa, cash_conversion, capex_intensity) sont exprimés en décimal (ex: 0.25 pour 25%).
-Les délais (dso, dpo, dio) sont exprimés en nombre de jours.
-Les multiples (interest_coverage) sont exprimés en valeur absolue.
+RÈGLES :
+- Toutes les valeurs monétaires en EUROS entiers (si k€ dans le doc → multiplier par 1000, si M€ → par 1 000 000)
+- tax_rate en décimal (ex: 0.25 pour 25%). Si non trouvé, mettre 0.25
+- delta_wc = BFR(N) - BFR(N-1). Si une seule année disponible, mettre 0
+- Laisser null si la valeur est introuvable dans le document
 
-Réponds UNIQUEMENT en JSON valide :
+Réponds UNIQUEMENT en JSON valide, sans aucun texte avant ou après :
 {
   "years": [
     {
       "fiscal_year": 2024,
       "revenue": null,
-      "gross_margin": null,
-      "sga": null,
       "ebitda": null,
       "ebit": null,
       "net_income": null,
-      "tax_rate": 0.25,
-      "total_assets": null,
-      "fixed_assets": null,
-      "current_assets": null,
-      "equity": null,
-      "net_debt": null,
-      "stocks": null,
-      "accounts_receivable": null,
-      "accounts_payable": null,
-      "working_capital": null,
-      "fr": null,
       "capex": null,
+      "net_debt": null,
+      "equity": null,
+      "working_capital": null,
       "delta_wc": null,
-      "fcf": null,
-      "dso": null,
-      "dpo": null,
-      "dio": null,
-      "roic": null,
-      "roe": null,
-      "roa": null,
-      "interest_coverage": null,
-      "cash_conversion": null,
-      "capex_intensity": null
+      "tax_rate": 0.25
     }
   ]
-}
-Remplace null par les vraies valeurs trouvées dans le document.
-Ne mets AUCUN texte avant ou après le JSON.`
+}`
 
 export async function POST(request: Request) {
   try {

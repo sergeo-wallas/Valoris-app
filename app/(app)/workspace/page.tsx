@@ -1,7 +1,7 @@
 "use client"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, ArrowRight, Building2, Calendar, FileText, Download, Sheet, Presentation } from "lucide-react"
+import { Plus, ArrowRight, Building2, Calendar, FileText, Download, Sheet, Presentation, Trash2 } from "lucide-react"
 
 interface Company {
   id: number
@@ -20,7 +20,14 @@ const SECTOR_COLORS = [
 export default function Workspace() {
   const [companies, setCompanies] = useState<Company[]>([])
   const [user, setUser] = useState<any>(null)
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null)
   const router = useRouter()
+
+  const deleteCompany = async (id: number) => {
+    await fetch(`/api/companies?id=${id}`, { method: "DELETE" })
+    setCompanies(prev => prev.filter(c => c.id !== id))
+    setConfirmDelete(null)
+  }
 
   useEffect(() => {
     const stored = localStorage.getItem("valoris_user")
@@ -207,6 +214,33 @@ export default function Workspace() {
                       Pitch
                     </a>
                   </div>
+
+                  {/* Bouton supprimer */}
+                  {confirmDelete === company.id ? (
+                    <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <span className="text-xs text-red-500 font-medium">Confirmer ?</span>
+                      <button
+                        onClick={e => { e.stopPropagation(); deleteCompany(company.id) }}
+                        className="px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-white bg-red-500 hover:bg-red-600 transition-colors"
+                      >
+                        Oui, supprimer
+                      </button>
+                      <button
+                        onClick={e => { e.stopPropagation(); setConfirmDelete(null) }}
+                        className="px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-slate-500 bg-slate-100 hover:bg-slate-200 transition-colors"
+                      >
+                        Annuler
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={e => { e.stopPropagation(); setConfirmDelete(company.id) }}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg text-slate-300 hover:text-red-400 hover:bg-red-50 transition-colors"
+                      title="Supprimer l'analyse"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
 
                   <ArrowRight
                     size={15}

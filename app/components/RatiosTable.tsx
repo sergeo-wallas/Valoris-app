@@ -1,27 +1,36 @@
 import db from "../db"
 
-export default async function RatiosTable({ companyId }: { companyId: string }) {
+export default async function RatiosTable({ companyId }: { companyId: string | null }) {
+  if (!companyId) return null
   const financials = db.prepare(
     "SELECT * FROM FinancialStatement WHERE company_id = ? ORDER BY fiscal_year DESC"
   ).all(companyId) as any[]
 
-  const n  = financials.find((f: any) => f.fiscal_year === 2024)
-  const n1 = financials.find((f: any) => f.fiscal_year === 2023)
+  // Utiliser les deux années les plus récentes disponibles
+  const n  = financials[0]  // plus récente (ORDER BY fiscal_year DESC)
+  const n1 = financials[1]  // année précédente
 
-  const ebitdaMargin  = n ? (n.ebitda      / n.revenue * 100).toFixed(1) : null
-  const grossMargin   = n ? (n.gross_margin / n.revenue * 100).toFixed(1) : null
-  const ebitMargin    = n ? (n.ebit        / n.revenue * 100).toFixed(1) : null
-  const netMargin     = n ? (n.net_income  / n.revenue * 100).toFixed(1) : null
-  const revenueGrowth = (n && n1)
+  const ratio = (num: number | null, den: number | null) =>
+    num != null && den && den > 0 ? (num / den * 100).toFixed(1) : null
+
+  const ebitdaMargin  = ratio(n?.ebitda, n?.revenue)
+  const grossMargin   = ratio(n?.gross_margin, n?.revenue)
+  const ebitMargin    = ratio(n?.ebit, n?.revenue)
+  const netMargin     = ratio(n?.net_income, n?.revenue)
+  const revenueGrowth = (n?.revenue && n1?.revenue && n1.revenue > 0)
     ? ((n.revenue - n1.revenue) / n1.revenue * 100).toFixed(1)
     : null
 
+  const growthLabel = (n && n1)
+    ? `Croissance CA (${n1.fiscal_year}→${n.fiscal_year})`
+    : "Croissance CA"
+
   const rows = [
-    { label: "Marge brute",                value: grossMargin,   suffix: "%", positive: true },
-    { label: "Marge EBITDA",               value: ebitdaMargin,  suffix: "%", positive: true },
-    { label: "Marge EBIT",                 value: ebitMargin,    suffix: "%", positive: true },
-    { label: "Marge nette",                value: netMargin,     suffix: "%", positive: true },
-    { label: "Croissance CA (2023→2024)",  value: revenueGrowth, suffix: "%", positive: null },
+    { label: "Marge brute",    value: grossMargin,   suffix: "%", positive: true },
+    { label: "Marge EBITDA",   value: ebitdaMargin,  suffix: "%", positive: true },
+    { label: "Marge EBIT",     value: ebitMargin,    suffix: "%", positive: true },
+    { label: "Marge nette",    value: netMargin,     suffix: "%", positive: true },
+    { label: growthLabel,      value: revenueGrowth, suffix: "%", positive: null },
   ]
 
   const getColor = (value: string | null, positive: boolean | null) => {
@@ -37,7 +46,7 @@ export default async function RatiosTable({ companyId }: { companyId: string }) 
       <div className="px-6 py-5 border-b border-slate-50 flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-slate-900">Ratios financiers</h2>
-          <p className="text-xs text-slate-400 mt-0.5">Exercice 2024 · PCG</p>
+          <p className="text-xs text-slate-400 mt-0.5">Exercice {n?.fiscal_year ?? "—"} · PCG</p>
         </div>
         <span className="text-xs text-slate-400 bg-slate-50 px-3 py-1 rounded-full border border-slate-100">
           5 ratios

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import ExcelJS from "exceljs"
 import db from "../../db"
+import { calculateDCF } from "../../dcf"
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -249,11 +250,11 @@ export async function GET(request: Request) {
 
   const waccRate = wacc?.wacc ?? 0.095
   const g = 0.02
-  const years = [2025, 2026, 2027, 2028, 2029]
+  const currentYear = new Date().getFullYear()
+  const years = Array.from({ length: 5 }, (_, i) => currentYear + i + 1)
   const latest = financials[financials.length - 1]
-  const oldest = financials[0]
-  const nYears = latest.fiscal_year - oldest.fiscal_year
-  const cagr = Math.pow(latest.revenue / oldest.revenue, 1 / nYears) - 1
+
+  const dcf = calculateDCF(financials, { wacc: waccRate, terminal_growth_rate: g, projection_years: 5 })
 
   // En-têtes années
   const yHeader = ws3.addRow(["", "Hypothèses", "2024A", ...years.map(y => `${y}F`)])
@@ -279,88 +280,57 @@ export async function GET(request: Request) {
   gRow.getCell(3).style = pctStyle()
   const gCell = `C${gRow.number}`
 
-  const cagrRow = ws3.addRow(["CAGR CA historique", "", cagr])
+  const cagrRow = ws3.addRow(["CAGR CA historique", "", dcf.cagr / 100])
   cagrRow.getCell(1).style = labelStyle()
   cagrRow.getCell(3).style = pctStyle()
 
   ws3.addRow([])
 
   // FCF de base
-  const baseFCFRow = ws3.addRow(["FCF de référence (2024A)", "", latest.fcf])
+  const baseFCFRow = ws3.addRow([`FCF de référence (${latest.fiscal_year})`, "", dcf.baseFCF])
   baseFCFRow.getCell(1).style = labelStyle()
   baseFCFRow.getCell(3).style = numStyle()
   const baseFCFCell = `C${baseFCFRow.number}`
 
-  // FCF projetés avec formules
-  const fcfRow = ws3.addRow(["FCF projeté", ""])
+  // FCF projetés (valeurs calculées par le moteur DCF)
+  const fcfRow = ws3.addRow(["FCF projeté", "", ...dcf.projectedFCFs])
   fcfRow.getCell(1).style = labelStyle()
-  years.forEach((_, i) => {
-    const col = i + 3
-    const cell = fcfRow.getCell(col)
-    if (i === 0) {
-      cell.value = { formula: `${baseFCFCell}*(1+${cagrRow.getCell(3).address ?? waccCell})` }
-    } else {
-      const prevCol = String.fromCharCode(65 + col - 2)
-      cell.value = { formula: `${prevCol}${fcfRow.number}*(1+C${cagrRow.number})` }
-    }
-    cell.style = numStyle()
-  })
+  for (let i = 3; i <= years.length + 2; i++) fcfRow.getCell(i).style = numStyle()
 
-  // Facteurs d'actualisation avec formules
-  const discRow = ws3.addRow(["Facteur d'actualisation", ""])
+  // Facteurs d'actualisation
+  const discRow = ws3.addRow(["Facteur d'actualisation", "", ...years.map((_, i) => 1 / Math.pow(1 + waccRate, i + 1))])
   discRow.getCell(1).style = labelStyle()
-  years.forEach((_, i) => {
-    const col = i + 3
-    const cell = discRow.getCell(col)
-    cell.value = { formula: `1/(1+${waccCell})^${i + 1}` }
-    cell.style = { ...numStyle(), numFmt: "0.000" }
-  })
+  for (let i = 3; i <= years.length + 2; i++) discRow.getCell(i).style = { ...numStyle(), numFmt: "0.000" }
 
-  // FCF actualisés avec formules
-  const pvRow = ws3.addRow(["FCF actualisé (PV)", ""])
+  // FCF actualisés
+  const pvRow = ws3.addRow(["FCF actualisé (PV)", "", ...dcf.pvFCFs])
   pvRow.getCell(1).style = { ...labelStyle(), font: { bold: true, color: { argb: `FF${TEAL}` }, size: 10 } }
-  years.forEach((_, i) => {
-    const col = i + 3
-    const colLetter = String.fromCharCode(65 + col - 1)
-    const cell = pvRow.getCell(col)
-    cell.value = { formula: `${colLetter}${fcfRow.number}*${colLetter}${discRow.number}` }
-    cell.style = { ...numStyle(TEAL), font: { bold: true, color: { argb: `FF${TEAL}` }, size: 10 } }
-  })
+  for (let i = 3; i <= years.length + 2; i++) pvRow.getCell(i).style = { ...numStyle(TEAL), font: { bold: true, color: { argb: `FF${TEAL}` }, size: 10 } }
 
   ws3.addRow([])
 
   // Somme PV FCFs
-  const sumRow = ws3.addRow(["Somme PV FCFs", ""])
+  const sumRow = ws3.addRow(["Somme PV FCFs", "", dcf.sumPVFCF])
   sumRow.getCell(1).style = labelStyle()
-  const firstCol = String.fromCharCode(65 + 2)
-  const lastCol = String.fromCharCode(65 + years.length + 1)
-  sumRow.getCell(3).value = { formula: `SUM(${firstCol}${pvRow.number}:${lastCol}${pvRow.number})` }
   sumRow.getCell(3).style = numStyle()
-  const sumCell = `C${sumRow.number}`
 
   // Valeur terminale
-  const tvRow = ws3.addRow(["Valeur terminale", ""])
+  const tvRow = ws3.addRow(["Valeur terminale", "", dcf.terminalValue])
   tvRow.getCell(1).style = labelStyle()
-  tvRow.getCell(3).value = { formula: `${lastCol}${fcfRow.number}*(1+${gCell})/(${waccCell}-${gCell})` }
   tvRow.getCell(3).style = numStyle()
-  const tvCell = `C${tvRow.number}`
 
   // PV valeur terminale
-  const pvtvRow = ws3.addRow(["PV Valeur terminale", ""])
+  const pvtvRow = ws3.addRow(["PV Valeur terminale", "", dcf.pvTerminalValue])
   pvtvRow.getCell(1).style = labelStyle()
-  pvtvRow.getCell(3).value = { formula: `${tvCell}/(1+${waccCell})^${years.length}` }
   pvtvRow.getCell(3).style = numStyle()
-  const pvtvCell = `C${pvtvRow.number}`
 
   ws3.addRow([])
 
   // Enterprise Value
-  const evRow = ws3.addRow(["Enterprise Value (EV)", ""])
+  const evRow = ws3.addRow(["Enterprise Value (EV)", "", dcf.enterpriseValue])
   evRow.getCell(1).style = { font: { bold: true, color: { argb: `FF${NAVY}` }, size: 11 } }
-  evRow.getCell(3).value = { formula: `${sumCell}+${pvtvCell}` }
   evRow.getCell(3).style = totalStyle()
   ws3.getRow(evRow.number).height = 24
-  const evCell = `C${evRow.number}`
 
   // Dette nette
   const debtRow = ws3.addRow(["(-) Dette nette", "", -(latest.net_debt ?? 0)])
@@ -368,10 +338,9 @@ export async function GET(request: Request) {
   debtRow.getCell(3).style = numStyle("ef4444")
 
   // Equity Value
-  const eqRow = ws3.addRow(["Equity Value", ""])
+  const eqRow = ws3.addRow(["Equity Value", "", dcf.equityValue])
   eqRow.getCell(1).style = { font: { bold: true, color: { argb: `FF${WHITE}` }, size: 12 } }
   eqRow.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: `FF${NAVY}` } }
-  eqRow.getCell(3).value = { formula: `${evCell}+C${debtRow.number}` }
   eqRow.getCell(3).style = {
     ...totalStyle(),
     fill: { type: "pattern", pattern: "solid", fgColor: { argb: `FF${NAVY}` } }

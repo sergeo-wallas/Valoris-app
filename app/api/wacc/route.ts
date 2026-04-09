@@ -36,9 +36,21 @@ export async function POST(request: Request) {
   const body = await request.json()
 
   const stmt = db.prepare(`
-    INSERT INTO WACCParameters 
+    INSERT INTO WACCParameters
     (company_id, beta_unlevered, beta_relevered, debt_equity_ratio, risk_free_rate, market_premium, size_premium, illiquidity_premium, ke, kd_gross, kd_net, wacc, scenario)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(company_id, scenario) DO UPDATE SET
+      beta_unlevered      = excluded.beta_unlevered,
+      beta_relevered      = excluded.beta_relevered,
+      debt_equity_ratio   = excluded.debt_equity_ratio,
+      risk_free_rate      = excluded.risk_free_rate,
+      market_premium      = excluded.market_premium,
+      size_premium        = excluded.size_premium,
+      illiquidity_premium = excluded.illiquidity_premium,
+      ke                  = excluded.ke,
+      kd_gross            = excluded.kd_gross,
+      kd_net              = excluded.kd_net,
+      wacc                = excluded.wacc
   `)
 
   const result = stmt.run(
@@ -54,8 +66,8 @@ export async function POST(request: Request) {
     body.kd_gross,
     body.kd_net,
     body.wacc,
-    body.scenario
+    body.scenario ?? "base"
   )
 
-  return NextResponse.json({ id: result.lastInsertRowid, message: "WACC créé" })
+  return NextResponse.json({ id: result.lastInsertRowid, message: "WACC enregistré" })
 }

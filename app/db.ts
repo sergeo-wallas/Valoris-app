@@ -157,6 +157,16 @@ if (!companyCols.some(c => c.name === "owner_email")) {
   db.exec("ALTER TABLE Company ADD COLUMN owner_email TEXT")
 }
 
+// Migration : colonne is_risk + index unique ESGCriteria
+const esgCols = db.prepare("PRAGMA table_info(ESGCriteria)").all() as { name: string }[]
+if (!esgCols.some(c => c.name === "is_risk")) {
+  db.exec("ALTER TABLE ESGCriteria ADD COLUMN is_risk INTEGER DEFAULT 0")
+}
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_esg_company_year_code
+  ON ESGCriteria(company_id, fiscal_year, criterion_code)
+`)
+
 // Migration : nouvelles colonnes FinancialStatement
 const fsCols = db.prepare("PRAGMA table_info(FinancialStatement)").all() as { name: string }[]
 const fsNewCols: [string, string][] = [
@@ -182,5 +192,38 @@ for (const [col, type] of fsNewCols) {
     db.exec(`ALTER TABLE FinancialStatement ADD COLUMN ${col} ${type}`)
   }
 }
+
+// Nettoyage des doublons avant création de l'index unique
+// Garde uniquement la ligne avec le plus grand id pour chaque (company_id, fiscal_year)
+db.exec(`
+  DELETE FROM FinancialStatement
+  WHERE id NOT IN (
+    SELECT MAX(id)
+    FROM FinancialStatement
+    GROUP BY company_id, fiscal_year
+  )
+`)
+
+// Contrainte UPSERT : une seule ligne par (company_id, fiscal_year)
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_fs_company_year
+  ON FinancialStatement(company_id, fiscal_year)
+`)
+
+// Nettoyage des doublons WACC avant création de l'index unique
+db.exec(`
+  DELETE FROM WACCParameters
+  WHERE id NOT IN (
+    SELECT MAX(id)
+    FROM WACCParameters
+    GROUP BY company_id, scenario
+  )
+`)
+
+// Contrainte UPSERT : une seule ligne par (company_id, scenario) pour WACC
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_wacc_company_scenario
+  ON WACCParameters(company_id, scenario)
+`)
 
 export default db

@@ -8,13 +8,13 @@ import {
   Legend, ResponsiveContainer
 } from "recharts"
 
-type Tab = "cr" | "bilan" | "flux" | "annexes"
+type Tab = "donnees" | "cr" | "bilan" | "flux"
 
 const TABS: { id: Tab; label: string }[] = [
+  { id: "donnees", label: "Données extraites" },
   { id: "cr",      label: "Compte de résultat" },
   { id: "bilan",   label: "Bilan" },
   { id: "flux",    label: "Flux de trésorerie" },
-  { id: "annexes", label: "Annexes" },
 ]
 
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -38,7 +38,7 @@ export default function EtatsFinanciers() {
   const [companyName, setCompanyName] = useState<string>("")
   const [loading, setLoading] = useState(true)
   const [noCompany, setNoCompany] = useState(false)
-  const [activeTab, setActiveTab] = useState<Tab>("cr")
+  const [activeTab, setActiveTab] = useState<Tab>("donnees")
   const searchParams = useSearchParams()
 
   useEffect(() => {
@@ -117,8 +117,14 @@ export default function EtatsFinanciers() {
     </main>
   )
 
-  const formatM   = (v: number) => v ? `${(v / 1_000_000).toFixed(1)}M` : "0"
-  const formatPct = (v: number) => v ? `${(v * 100).toFixed(1)}%` : "—"
+  const formatM = (v: number | null | undefined): string => {
+    if (v == null || isNaN(v)) return "—"
+    const abs = Math.abs(v)
+    if (abs >= 1_000_000) return `${(v / 1_000_000).toFixed(1)} M€`
+    if (abs >= 1_000)     return `${Math.round(v / 1_000)} k€`
+    return `${Math.round(v)} €`
+  }
+  const formatPct = (v: number | null | undefined) => (v != null && !isNaN(v)) ? `${(v * 100).toFixed(1)}%` : "—"
 
   const latest = financials[financials.length - 1]
   const prev   = financials[financials.length - 2]
@@ -145,8 +151,9 @@ export default function EtatsFinanciers() {
       {/* HEADER */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">États financiers</h1>
-          <p className="text-slate-400 text-sm mt-1">{companyName} · Historique {financials.length} exercice{financials.length > 1 ? "s" : ""}</p>
+          <p className="text-xs font-medium text-slate-400 uppercase tracking-widest mb-2">Analyse financière</p>
+          <h1 className="text-2xl font-bold text-slate-900">Synthèse États financiers</h1>
+          <p className="text-slate-400 text-sm mt-1">{companyName} · {financials.length} exercice{financials.length > 1 ? "s" : ""}</p>
         </div>
       </div>
 
@@ -166,6 +173,96 @@ export default function EtatsFinanciers() {
           </button>
         ))}
       </div>
+
+      {/* ── DONNÉES EXTRAITES ── */}
+      {activeTab === "donnees" && (
+        <div className="space-y-5">
+          {/* Tableau des 10 champs bruts */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm">
+            <div className="px-6 py-5 border-b border-slate-50 flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900">Données brutes extraites</h2>
+                <p className="text-xs text-slate-400 mt-0.5">10 indicateurs clés · en euros</p>
+              </div>
+              <span className="text-xs text-slate-400 bg-slate-50 px-3 py-1 rounded-full border border-slate-100">
+                {financials.length} exercice{financials.length > 1 ? "s" : ""}
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-[#1a3a5c]">
+                    <th className="text-left text-[10px] font-semibold text-white/60 uppercase tracking-wide px-6 py-3 w-52">Indicateur</th>
+                    {financials.map(f => (
+                      <th key={f.fiscal_year} className="text-right text-[10px] font-semibold text-white uppercase tracking-wide px-4 py-3 min-w-[120px]">
+                        {f.fiscal_year}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { label: "Chiffre d'affaires",  key: "revenue",          unit: "€",  section: true },
+                    { label: "EBITDA",               key: "ebitda",           unit: "€" },
+                    { label: "EBIT",                 key: "ebit",             unit: "€" },
+                    { label: "Résultat net",         key: "net_income",       unit: "€" },
+                    { label: "Capex",                key: "capex",            unit: "€",  section: true },
+                    { label: "BFR",                  key: "working_capital",  unit: "€" },
+                    { label: "Variation BFR (ΔBFR)", key: "delta_wc",         unit: "€" },
+                    { label: "Dette nette",          key: "net_debt",         unit: "€",  section: true },
+                    { label: "Capitaux propres",     key: "equity",           unit: "€" },
+                    { label: "Taux IS",              key: "tax_rate",         unit: "%" },
+                  ].map((row, ri) => (
+                    <tr key={row.key} className={`border-t ${row.section && ri > 0 ? "border-slate-200" : "border-slate-50"} hover:bg-slate-50/50 transition-colors`}>
+                      <td className="px-6 py-3 text-sm text-slate-600 font-medium">{row.label}</td>
+                      {financials.map(f => {
+                        const v = f[row.key]
+                        let display = "—"
+                        if (v != null) {
+                          if (row.unit === "%") display = `${(v * 100).toFixed(1)}%`
+                          else display = v.toLocaleString("fr-FR", { maximumFractionDigits: 0 }) + " €"
+                        }
+                        return (
+                          <td key={f.fiscal_year} className={`px-4 py-3 text-sm text-right tabular-nums font-semibold ${
+                            v == null ? "text-slate-300" : v < 0 ? "text-red-500" : "text-slate-900"
+                          }`}>
+                            {display}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Ratios calculés automatiquement */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm">
+            <div className="px-6 py-5 border-b border-slate-50">
+              <h2 className="text-sm font-semibold text-slate-900">Ratios calculés automatiquement</h2>
+              <p className="text-xs text-slate-400 mt-0.5">Dérivés des données brutes · exercice {latest?.fiscal_year}</p>
+            </div>
+            <div className="grid grid-cols-4 gap-4 p-6">
+              {[
+                { label: "FCF estimé",      val: latest?.fcf != null ? `${(latest.fcf / 1_000_000).toFixed(2)} M€` : "—" },
+                { label: "ROIC",            val: latest?.roic != null ? `${(latest.roic * 100).toFixed(1)}%` : "—" },
+                { label: "ROE",             val: latest?.roe  != null ? `${(latest.roe  * 100).toFixed(1)}%` : "—" },
+                { label: "Marge EBITDA",    val: latest?.ebitda && latest?.revenue ? `${(latest.ebitda / latest.revenue * 100).toFixed(1)}%` : "—" },
+                { label: "Marge EBIT",      val: latest?.ebit  && latest?.revenue ? `${(latest.ebit   / latest.revenue * 100).toFixed(1)}%` : "—" },
+                { label: "Marge nette",     val: latest?.net_income && latest?.revenue ? `${(latest.net_income / latest.revenue * 100).toFixed(1)}%` : "—" },
+                { label: "Cash conversion", val: latest?.cash_conversion != null ? `${(latest.cash_conversion * 100).toFixed(1)}%` : "—" },
+                { label: "Intensité Capex", val: latest?.capex_intensity != null ? `${(latest.capex_intensity * 100).toFixed(1)}%` : "—" },
+              ].map(item => (
+                <div key={item.label} className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                  <p className="text-[10px] font-medium text-slate-400 uppercase tracking-widest mb-2">{item.label}</p>
+                  <p className="text-xl font-bold text-slate-900 tabular-nums">{item.val}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── COMPTE DE RÉSULTAT ── */}
       {activeTab === "cr" && (
@@ -447,21 +544,6 @@ export default function EtatsFinanciers() {
         </>
       )}
 
-      {/* ── ANNEXES ── */}
-      {activeTab === "annexes" && (
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-16 flex flex-col items-center justify-center text-center">
-          <div className="w-14 h-14 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center mb-5">
-            <span className="text-2xl">📎</span>
-          </div>
-          <h2 className="text-lg font-semibold text-slate-900 mb-2">Annexes aux états financiers</h2>
-          <p className="text-slate-400 text-sm max-w-sm leading-relaxed">
-            Notes annexes, méthodes comptables, engagements hors bilan, détail des provisions et dépréciations.
-          </p>
-          <span className="mt-5 text-xs font-medium text-[#1a3a5c] bg-[#1a3a5c]/8 px-4 py-1.5 rounded-full border border-[#1a3a5c]/10">
-            En développement
-          </span>
-        </div>
-      )}
 
     </main>
   )

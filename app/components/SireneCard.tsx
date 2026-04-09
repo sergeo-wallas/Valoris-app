@@ -30,16 +30,12 @@ async function fetchSirene(siren: string) {
   }
 }
 
-function getCompany(companyId: string) {
-  const companies = db.prepare("SELECT * FROM Company").all() as any[]
-  return companies.find((c: any) => c.id === parseInt(companyId)) ?? companies[0]
-}
-
-export default async function SireneCard({ companyId }: { companyId: string }) {
+export default async function SireneCard({ companyId }: { companyId: string | null }) {
+  if (!companyId) return null
   const cookieStore = await cookies()
   const apiEnabled = cookieStore.get("valoris_api_sirene")?.value !== "0"
 
-  const company = getCompany(companyId)
+  const company = db.prepare("SELECT * FROM Company WHERE id = ?").get(companyId) as any
   if (!company?.siren) return null
 
   if (!apiEnabled) {

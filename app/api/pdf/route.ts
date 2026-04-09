@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import db from "../../db"
+import { calculateDCF } from "../../dcf"
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -14,26 +15,23 @@ export async function GET(request: Request) {
   ).get(company_id) as any
 
   const latest = financials[financials.length - 1]
-  const prev = financials[financials.length - 2]
   const waccRate = wacc?.wacc ?? 0.095
   const g = 0.02
+  const currentYear = new Date().getFullYear()
+  const years = Array.from({ length: 5 }, (_, i) => currentYear + i + 1)
 
-  // Calculs
-  const oldest = financials[0]
-  const nYears = latest.fiscal_year - oldest.fiscal_year
-  const cagr = Math.pow(latest.revenue / oldest.revenue, 1 / nYears) - 1
-  let fcf = latest.fcf ?? 0
-  const years = [2025, 2026, 2027, 2028, 2029]
-  const projectedFCFs = years.map(() => { fcf = fcf * (1 + cagr); return Math.round(fcf) })
-  const pvFCFs = projectedFCFs.map((f, i) => Math.round(f / Math.pow(1 + waccRate, i + 1)))
-  const sumPVFCF = pvFCFs.reduce((a, b) => a + b, 0)
-  const terminalValue = Math.round(projectedFCFs[4] * (1 + g) / (waccRate - g))
-  const pvTV = Math.round(terminalValue / Math.pow(1 + waccRate, 5))
-  const ev = sumPVFCF + pvTV
-  const equityValue = ev - (latest.net_debt ?? 0)
+  const dcf = calculateDCF(financials, { wacc: waccRate, terminal_growth_rate: g, projection_years: 5 })
+  const { projectedFCFs, pvFCFs, sumPVFCF, pvTerminalValue: pvTV, enterpriseValue: ev, equityValue, cagr: cagrPct } = dcf
+  const cagr = cagrPct / 100
 
   const fmt = (n: number) => n ? new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(n) + " €" : "-"
-  const fmtM = (n: number) => n ? `${(n / 1_000_000).toFixed(1)} M€` : "-"
+  const fmtM = (n: number | null | undefined): string => {
+    if (!n) return "—"
+    const abs = Math.abs(n)
+    if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(1)} M€`
+    if (abs >= 1_000)     return `${Math.round(n / 1_000)} k€`
+    return `${Math.round(n)} €`
+  }
   const fmtPct = (n: number) => n ? `${(n * 100).toFixed(1)}%` : "-"
   const date = new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
 
@@ -257,23 +255,17 @@ export async function GET(request: Request) {
   <div class="section">
     <div class="section-title">Analyse de sensibilité — 3 scénarios WACC</div>
     <div class="scenarios">
-      ${[
-        { name: "Pessimiste", wacc: 0.0999, cls: "" },
-        { name: "Base", wacc: 0.095, cls: "base" },
-        { name: "Optimiste", wacc: 0.0901, cls: "" },
-      ].map(s => {
-        let f = latest.fcf ?? 0
-        const pFCFs = years.map(() => { f = f * (1 + cagr); return f })
-        const pvs = pFCFs.map((fcf, i) => fcf / Math.pow(1 + s.wacc, i + 1))
-        const sum = pvs.reduce((a, b) => a + b, 0)
-        const tv = pFCFs[4] * (1 + g) / (s.wacc - g)
-        const pvt = tv / Math.pow(1 + s.wacc, 5)
-        const evS = sum + pvt
+      ${(["pessimiste", "base", "optimiste"] as const).map(scenario => {
+        const sc: any = db.prepare(
+          "SELECT * FROM WACCParameters WHERE company_id = ? AND scenario = ?"
+        ).get(company_id, scenario) ?? { wacc: waccRate + (scenario === "pessimiste" ? 0.02 : scenario === "optimiste" ? -0.015 : 0) }
+        const scDcf = calculateDCF(financials, { wacc: sc.wacc, terminal_growth_rate: g, projection_years: 5 })
+        const isBase = scenario === "base"
         return `
-          <div class="scenario ${s.cls}">
-            <div class="scenario-name">${s.name}</div>
-            <div class="scenario-wacc">WACC ${(s.wacc * 100).toFixed(1)}%</div>
-            <div class="scenario-ev">${fmtM(evS)}</div>
+          <div class="scenario ${isBase ? "base" : ""}">
+            <div class="scenario-name">${scenario.charAt(0).toUpperCase() + scenario.slice(1)}</div>
+            <div class="scenario-wacc">WACC ${(sc.wacc * 100).toFixed(1)}%</div>
+            <div class="scenario-ev">${fmtM(scDcf.enterpriseValue)}</div>
           </div>
         `
       }).join("")}

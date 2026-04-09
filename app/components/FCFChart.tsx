@@ -10,35 +10,43 @@ interface FCFChartProps {
   years: number[]
 }
 
-const CustomTooltip = ({ active, payload, label }: any) => {
-  if (!active || !payload?.length) return null
-  return (
-    <div className="bg-white border border-slate-100 shadow-lg rounded-xl p-3 text-xs">
-      <p className="font-semibold text-slate-700 mb-2">{label}</p>
-      {payload.map((p: any) => (
-        <div key={p.name} className="flex items-center gap-2 mb-1">
-          <div className="w-2 h-2 rounded-full" style={{ background: p.fill }} />
-          <span className="text-slate-500">{p.name}</span>
-          <span className="font-bold text-slate-800 ml-auto pl-4">{p.value} M€</span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
 export default function FCFChart({ projectedFCFs, pvFCFs, years }: FCFChartProps) {
+  // Choisir l'unité selon la magnitude des valeurs
+  const maxVal = Math.max(...projectedFCFs.map(Math.abs), ...pvFCFs.map(Math.abs), 1)
+  const useMillions = maxVal >= 500_000
+  const divisor = useMillions ? 1_000_000 : 1_000
+  const unit    = useMillions ? "M€" : "k€"
+
+  const toUnit = (n: number) => Math.round(n / divisor * 10) / 10
+
   const data = years.map((year, i) => ({
     year: year.toString(),
-    "FCF projeté":   Math.round(projectedFCFs[i] / 1_000_000 * 10) / 10,
-    "FCF actualisé": Math.round(pvFCFs[i]         / 1_000_000 * 10) / 10,
+    "FCF projeté":   toUnit(projectedFCFs[i]),
+    "FCF actualisé": toUnit(pvFCFs[i]),
   }))
+
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload?.length) return null
+    return (
+      <div className="bg-white border border-slate-100 shadow-lg rounded-xl p-3 text-xs">
+        <p className="font-semibold text-slate-700 mb-2">{label}</p>
+        {payload.map((p: any) => (
+          <div key={p.name} className="flex items-center gap-2 mb-1">
+            <div className="w-2 h-2 rounded-full" style={{ background: p.fill }} />
+            <span className="text-slate-500">{p.name}</span>
+            <span className="font-bold text-slate-800 ml-auto pl-4">{p.value} {unit}</span>
+          </div>
+        ))}
+      </div>
+    )
+  }
 
   return (
     <div className="bg-white rounded-2xl border border-slate-100 shadow-sm mb-6 p-6">
       <div className="flex items-center justify-between mb-5">
         <div>
           <h2 className="text-sm font-semibold text-slate-900">FCF projetés vs actualisés</h2>
-          <p className="text-xs text-slate-400 mt-0.5">En millions d'euros · N+1 à N+5</p>
+          <p className="text-xs text-slate-400 mt-0.5">En {unit} · N+1 à N+{years.length}</p>
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1.5">
@@ -64,7 +72,7 @@ export default function FCFChart({ projectedFCFs, pvFCFs, years }: FCFChartProps
             tick={{ fontSize: 11, fill: "#94a3b8" }}
             axisLine={false}
             tickLine={false}
-            unit=" M€"
+            unit={` ${unit}`}
           />
           <Tooltip content={<CustomTooltip />} cursor={{ fill: "#f8fafc" }} />
           <ReferenceLine y={0} stroke="#e2e8f0" />

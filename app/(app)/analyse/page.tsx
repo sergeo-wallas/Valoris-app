@@ -1,8 +1,9 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Search, Check, SlidersHorizontal, ArrowRight, ArrowLeft, X, Upload, FileText } from "lucide-react"
+import { Search, Check, SlidersHorizontal, ArrowRight, ArrowLeft, X, Upload, FileText, Info } from "lucide-react"
 import FinancialUploader from "../../components/FinancialUploader"
+import { SECTORS, MARKET_DEFAULTS, computeWACC, type WACCResult } from "../../lib/wacc"
 
 type Step = 1 | 2 | 3
 
@@ -15,10 +16,52 @@ export default function Analyse() {
   const [error, setError] = useState("")
   const [showFinancials, setShowFinancials] = useState(false)
   const [showUploader, setShowUploader] = useState(false)
-  const [wacc, setWacc] = useState("9.5")
   const [g, setG] = useState("2.0")
   const [years, setYears] = useState("5")
   const router = useRouter()
+
+  // WACC calculator state
+  const [sectorKey, setSectorKey] = useState("autre")
+  const [waccResult, setWaccResult] = useState<WACCResult | null>(null)
+  const [deCible, setDeCible] = useState<number>(0.5) // D/E cible (depuis les financials ou défaut)
+  const [rf, setRf] = useState(MARKET_DEFAULTS.rf * 100)
+  const [erp, setErp] = useState(MARKET_DEFAULTS.erp * 100)
+  const [sizePrem, setSizePrem] = useState(MARKET_DEFAULTS.size_premium * 100)
+  const [illiqPrem, setIlliqPrem] = useState(MARKET_DEFAULTS.illiquidity_premium * 100)
+  const [kdGross, setKdGross] = useState(MARKET_DEFAULTS.kd_gross * 100)
+
+  // Recalcule le WACC chaque fois qu'un paramètre change
+  useEffect(() => {
+    const result = computeWACC({
+      sector_key: sectorKey,
+      de_cible: deCible,
+      rf: rf / 100,
+      erp: erp / 100,
+      size_premium: sizePrem / 100,
+      illiquidity_premium: illiqPrem / 100,
+      kd_gross: kdGross / 100,
+    })
+    setWaccResult(result)
+  }, [sectorKey, deCible, rf, erp, sizePrem, illiqPrem, kdGross])
+
+  // Quand on passe à l'étape 3, on récupère les financials pour extraire D/E
+  useEffect(() => {
+    if (step !== 3 || !company?.id) return
+    fetch(`/api/financials?company_id=${company.id}`)
+      .then(r => r.json())
+      .then((data: any[]) => {
+        if (data && data.length > 0) {
+          const latest = data[0]
+          const equity = latest.equity
+          const netDebt = latest.net_debt
+          if (equity && equity > 0 && netDebt != null) {
+            const de = Math.max(0, netDebt / equity)
+            setDeCible(Math.round(de * 100) / 100)
+          }
+        }
+      })
+      .catch(() => {})
+  }, [step, company?.id])
 
   const TRANCHES: Record<string, string> = {
     "NN": "Non employeur", "00": "0 salarié", "01": "1–2", "02": "3–5",
@@ -83,28 +126,36 @@ export default function Analyse() {
   }
 
   const launchAnalysis = async () => {
+    if (!waccResult) return
     setLoading(true)
     try {
-      await fetch("/api/wacc", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          company_id: company.id,
-          wacc: parseFloat(wacc) / 100,
-          terminal_growth_rate: parseFloat(g) / 100,
-          beta_unlevered: 0.74,
-          beta_relevered: 1.90,
-          debt_equity_ratio: 2.07,
-          risk_free_rate: 0.035,
-          market_premium: 0.06,
-          size_premium: 0.03,
-          illiquidity_premium: 0.025,
-          ke: 0.20,
-          kd_gross: 0.057,
-          kd_net: 0.043,
-          scenario: "base"
+      // Sauvegarde les 3 scénarios : base, pessimiste (+2%), optimiste (-1.5%)
+      const scenarios = [
+        { scenario: "base",       wacc: waccResult.wacc },
+        { scenario: "pessimiste", wacc: waccResult.wacc + 0.02 },
+        { scenario: "optimiste",  wacc: Math.max(0.03, waccResult.wacc - 0.015) },
+      ]
+      for (const s of scenarios) {
+        await fetch("/api/wacc", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            company_id:          company.id,
+            wacc:                s.wacc,
+            beta_unlevered:      waccResult.beta_unlevered,
+            beta_relevered:      waccResult.beta_relevered,
+            debt_equity_ratio:   waccResult.de_cible,
+            risk_free_rate:      waccResult.rf,
+            market_premium:      waccResult.erp,
+            size_premium:        waccResult.size_premium,
+            illiquidity_premium: waccResult.illiquidity_premium,
+            ke:                  waccResult.ke,
+            kd_gross:            waccResult.kd_gross,
+            kd_net:              waccResult.kd_net,
+            scenario:            s.scenario,
+          })
         })
-      })
+      }
       router.push(`/?company_id=${company.id}`)
     } catch {
       setError("Erreur lors du lancement")
@@ -378,110 +429,206 @@ export default function Analyse() {
         </div>
       )}
 
-      {/* STEP 3 — PARAMÈTRES */}
+      {/* STEP 3 — PARAMÈTRES WACC */}
       {step === 3 && (
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-8 max-w-lg">
-          <h2 className="text-lg font-semibold text-slate-900 mb-1">Paramètres du modèle</h2>
-          <p className="text-sm text-slate-400 mb-6">Définissez les hypothèses de votre modèle DCF</p>
+        <div className="space-y-5 max-w-2xl">
 
-          <div className="space-y-6">
+          {/* WACC Calculator */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-8">
+            <h2 className="text-lg font-semibold text-slate-900 mb-1">Calcul du WACC</h2>
+            <p className="text-sm text-slate-400 mb-6">
+              Le WACC est calculé automatiquement par la méthode Hamada (bêta Damodaran Europe 2025)
+            </p>
 
-            {/* WACC */}
-            <div>
+            {/* Étape 1 — Secteur */}
+            <div className="mb-6">
+              <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-2 block">
+                Étape 1 — Secteur d'activité (comparable coté)
+              </label>
+              <select
+                value={sectorKey}
+                onChange={e => setSectorKey(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 outline-none focus:border-[#1a3a5c] bg-slate-50 focus:bg-white transition-all"
+              >
+                {Object.entries(SECTORS).map(([key, s]) => (
+                  <option key={key} value={key}>{s.label}</option>
+                ))}
+              </select>
+              {waccResult && (
+                <p className="text-xs text-slate-400 mt-1.5">
+                  β leviéré comparable : <strong>{waccResult.beta_levered_comparable}</strong> · D/E secteur : <strong>{(waccResult.de_comparable * 100).toFixed(0)}%</strong>
+                </p>
+              )}
+            </div>
+
+            {/* Étape 2+3 — Structure financière PME */}
+            <div className="mb-6">
               <div className="flex items-center justify-between mb-2">
-                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">WACC</label>
-                <span className="text-lg font-bold text-[#1a3a5c] tabular-nums">{wacc}%</span>
+                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">
+                  Étape 2+3 — D/E de la PME cible
+                </label>
+                <span className="text-sm font-bold text-[#1a3a5c] tabular-nums">{(deCible * 100).toFixed(0)}%</span>
               </div>
               <input
-                type="range" min="5" max="20" step="0.5"
-                value={wacc}
-                onChange={e => setWacc(e.target.value)}
+                type="range" min="0" max="3" step="0.05"
+                value={deCible}
+                onChange={e => setDeCible(parseFloat(e.target.value))}
                 className="w-full accent-[#1a3a5c]"
               />
               <div className="flex justify-between mt-1">
-                <p className="text-xs text-slate-400">5%</p>
-                <p className="text-xs text-slate-400">Recommandé : 8–12% pour PME</p>
-                <p className="text-xs text-slate-400">20%</p>
+                <p className="text-xs text-slate-400">0% (0 dette)</p>
+                <p className="text-xs text-slate-400">
+                  {waccResult ? <>β unlevered : <strong>{waccResult.beta_unlevered}</strong> → β relevered : <strong>{waccResult.beta_relevered}</strong></> : ""}
+                </p>
+                <p className="text-xs text-slate-400">300%</p>
               </div>
             </div>
 
-            {/* g */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Croissance terminale g</label>
-                <span className="text-lg font-bold text-[#1a3a5c] tabular-nums">{g}%</span>
-              </div>
-              <input
-                type="range" min="0" max="5" step="0.5"
-                value={g}
-                onChange={e => setG(e.target.value)}
-                className="w-full accent-[#1a3a5c]"
-              />
-              <div className="flex justify-between mt-1">
-                <p className="text-xs text-slate-400">0%</p>
-                <p className="text-xs text-slate-400">Recommandé : 1.5–2.5%</p>
-                <p className="text-xs text-slate-400">5%</p>
-              </div>
-            </div>
-
-            {/* Années */}
-            <div>
-              <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-3 block">Années de projection</label>
-              <div className="grid grid-cols-4 gap-2">
-                {["3", "5", "7", "10"].map(y => (
-                  <button
-                    key={y}
-                    type="button"
-                    onClick={() => setYears(y)}
-                    className={`py-2.5 rounded-xl text-sm font-semibold border transition-all ${
-                      years === y
-                        ? "bg-[#1a3a5c] text-white border-[#1a3a5c] shadow-sm"
-                        : "bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300 hover:bg-white"
-                    }`}
-                  >
-                    {y} ans
-                  </button>
+            {/* Paramètres de marché */}
+            <div className="border-t border-slate-100 pt-5 mb-5">
+              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-1.5">
+                <Info size={11} /> Paramètres de marché (modifiables)
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                {[
+                  { label: "Rf — Taux sans risque (OAT)", val: rf, set: setRf, min: 0, max: 8, step: 0.1 },
+                  { label: "ERP — Prime de marché",        val: erp, set: setErp, min: 2, max: 10, step: 0.1 },
+                  { label: "Prime taille PME",             val: sizePrem, set: setSizePrem, min: 0, max: 8, step: 0.5 },
+                  { label: "Prime illiquidité",            val: illiqPrem, set: setIlliqPrem, min: 0, max: 6, step: 0.5 },
+                  { label: "Kd brut (taux d'emprunt)",     val: kdGross, set: setKdGross, min: 1, max: 12, step: 0.25 },
+                ].map(({ label, val, set, min, max, step }) => (
+                  <div key={label}>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs text-slate-500">{label}</label>
+                      <span className="text-xs font-bold text-slate-800 tabular-nums">{val.toFixed(2)}%</span>
+                    </div>
+                    <input
+                      type="range" min={min} max={max} step={step}
+                      value={val}
+                      onChange={e => set(parseFloat(e.target.value))}
+                      className="w-full accent-[#1a3a5c] h-1.5"
+                    />
+                  </div>
                 ))}
               </div>
             </div>
+
+            {/* Résultat WACC */}
+            {waccResult && (
+              <div className="space-y-3">
+                {/* Décomposition Ke / Kd */}
+                <div className="bg-gradient-to-br from-[#0c1f35] to-[#1a3a5c] rounded-xl p-5">
+                  <p className="text-[10px] font-semibold text-white/50 uppercase tracking-widest mb-3">Décomposition du WACC</p>
+                  <div className="grid grid-cols-2 gap-2 text-xs mb-4">
+                    {[
+                      { label: "Ke (coût fonds propres)", val: `${(waccResult.ke * 100).toFixed(1)}%` },
+                      { label: "Kd net (coût dette)",     val: `${(waccResult.kd_net * 100).toFixed(1)}%` },
+                      { label: "Poids E/(D+E)",           val: `${(waccResult.weight_equity * 100).toFixed(0)}%` },
+                      { label: "Poids D/(D+E)",           val: `${(waccResult.weight_debt * 100).toFixed(0)}%` },
+                      { label: "Ke × E/(D+E)",            val: `${(waccResult.ke * waccResult.weight_equity * 100).toFixed(2)}%` },
+                      { label: "Kd_net × D/(D+E)",        val: `${(waccResult.kd_net * waccResult.weight_debt * 100).toFixed(2)}%` },
+                    ].map(row => (
+                      <div key={row.label} className="flex justify-between text-white/60">
+                        <span>{row.label}</span>
+                        <span className="font-semibold text-white/80">{row.val}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 3 scénarios */}
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    {
+                      scenario: "Pessimiste",
+                      wacc: waccResult.wacc + 0.02,
+                      delta: "+2%",
+                      bg: "bg-red-50 border-red-100",
+                      label: "text-red-600",
+                      badge: "bg-red-100 text-red-500",
+                    },
+                    {
+                      scenario: "Base",
+                      wacc: waccResult.wacc,
+                      delta: "référence",
+                      bg: "bg-gradient-to-br from-[#0c1f35] to-[#1a3a5c]",
+                      label: "text-white/60",
+                      badge: "bg-white/10 text-white/70",
+                      valueClass: "text-white",
+                    },
+                    {
+                      scenario: "Optimiste",
+                      wacc: Math.max(0.03, waccResult.wacc - 0.015),
+                      delta: "-1.5%",
+                      bg: "bg-emerald-50 border-emerald-100",
+                      label: "text-emerald-600",
+                      badge: "bg-emerald-100 text-emerald-600",
+                    },
+                  ].map(s => (
+                    <div key={s.scenario} className={`rounded-xl p-4 border text-center ${s.bg}`}>
+                      <p className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${s.label}`}>{s.scenario}</p>
+                      <p className={`text-2xl font-bold tabular-nums mb-1 ${s.valueClass ?? "text-slate-900"}`}>
+                        {(s.wacc * 100).toFixed(1)}%
+                      </p>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${s.badge}`}>
+                        WACC {s.delta}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* RECAP */}
-          <div className="bg-gradient-to-br from-slate-50 to-slate-100/50 rounded-xl p-5 mt-6 border border-slate-100">
-            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-3">Récapitulatif</p>
-            <div className="space-y-2">
-              {[
-                { label: "Entreprise",           value: company?.name },
-                { label: "WACC",                 value: `${wacc}%` },
-                { label: "Croissance terminale",  value: `${g}%` },
-                { label: "Horizon de projection", value: `${years} ans` },
-              ].map(row => (
-                <div key={row.label} className="flex justify-between items-center">
-                  <span className="text-sm text-slate-500">{row.label}</span>
-                  <span className="text-sm font-semibold text-slate-900">{row.value}</span>
+          {/* DCF Params */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-8">
+            <h2 className="text-lg font-semibold text-slate-900 mb-5">Paramètres DCF</h2>
+            <div className="space-y-5">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Croissance terminale g</label>
+                  <span className="text-lg font-bold text-[#1a3a5c] tabular-nums">{g}%</span>
                 </div>
-              ))}
+                <input type="range" min="0" max="5" step="0.5" value={g} onChange={e => setG(e.target.value)} className="w-full accent-[#1a3a5c]" />
+                <div className="flex justify-between mt-1">
+                  <p className="text-xs text-slate-400">0%</p>
+                  <p className="text-xs text-slate-400">Recommandé : 1.5–2.5%</p>
+                  <p className="text-xs text-slate-400">5%</p>
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-3 block">Années de projection</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {["3", "5", "7", "10"].map(y => (
+                    <button key={y} type="button" onClick={() => setYears(y)}
+                      className={`py-2.5 rounded-xl text-sm font-semibold border transition-all ${
+                        years === y ? "bg-[#1a3a5c] text-white border-[#1a3a5c] shadow-sm" : "bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300 hover:bg-white"
+                      }`}
+                    >
+                      {y} ans
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 
           {error && (
-            <div className="flex items-start gap-2.5 text-red-600 text-sm mt-4 bg-red-50 border border-red-100 px-4 py-3 rounded-xl">
-              <X size={14} className="flex-shrink-0 mt-0.5" />
-              {error}
+            <div className="flex items-start gap-2.5 text-red-600 text-sm bg-red-50 border border-red-100 px-4 py-3 rounded-xl">
+              <X size={14} className="flex-shrink-0 mt-0.5" /> {error}
             </div>
           )}
 
-          <div className="flex gap-3 mt-6">
+          <div className="flex gap-3">
             <button
               onClick={launchAnalysis}
-              disabled={loading}
-              className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-[#0a5040] to-[#0d7a5f] text-white py-3 rounded-xl text-sm font-medium hover:from-[#095040] hover:to-[#0a6a52] transition-all shadow-sm disabled:opacity-40"
+              disabled={loading || !waccResult}
+              className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-[#0a5040] to-[#0d7a5f] text-white py-3.5 rounded-xl text-sm font-medium hover:from-[#095040] hover:to-[#0a6a52] transition-all shadow-sm disabled:opacity-40"
             >
-              {loading ? "Génération en cours…" : <>Lancer l'analyse <ArrowRight size={14} /></>}
+              {loading ? "Génération en cours…" : <>Lancer l'analyse · WACC {waccResult ? `${(waccResult.wacc * 100).toFixed(1)}%` : "…"} <ArrowRight size={14} /></>}
             </button>
-            <button
-              onClick={() => setStep(2)}
-              className="flex items-center gap-1.5 px-4 py-3 border border-slate-200 rounded-xl text-sm text-slate-500 hover:border-slate-300 hover:bg-slate-50 transition-all"
+            <button onClick={() => setStep(2)}
+              className="flex items-center gap-1.5 px-4 py-3.5 border border-slate-200 rounded-xl text-sm text-slate-500 hover:border-slate-300 hover:bg-slate-50 transition-all"
             >
               <ArrowLeft size={14} /> Retour
             </button>

@@ -1,5 +1,5 @@
 "use client"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useCompany } from "../context/CompanyContext"
 import { useEffect, useState } from "react"
 import {
@@ -32,7 +32,7 @@ const PROFILE_CONFIG: Record<string, {
           { href: "/workspace",        label: "Workspace",        icon: LayoutGrid },
           { href: "/",                 label: "Dashboard",        icon: Home },
           { href: "/valorisation",     label: "Valorisation",     icon: TrendingUp },
-          { href: "/etats-financiers", label: "États financiers", icon: BarChart2 },
+          { href: "/etats-financiers", label: "Synthèse financière", icon: BarChart2 },
         ],
       },
     ],
@@ -58,7 +58,7 @@ const PROFILE_CONFIG: Record<string, {
       {
         title: "Analyse",
         links: [
-          { href: "/etats-financiers", label: "États financiers", icon: BarChart2 },
+          { href: "/etats-financiers", label: "Synthèse financière", icon: BarChart2 },
           { href: "/valorisation",     label: "Valorisation",     icon: TrendingUp },
           { href: "/comparables",      label: "Comparables",      icon: Layers },
         ],
@@ -81,7 +81,7 @@ const PROFILE_CONFIG: Record<string, {
         links: [
           { href: "/workspace",        label: "Workspace",        icon: LayoutGrid },
           { href: "/",                 label: "Dashboard",        icon: Home },
-          { href: "/etats-financiers", label: "États financiers", icon: BarChart2 },
+          { href: "/etats-financiers", label: "Synthèse financière", icon: BarChart2 },
           { href: "/valorisation",     label: "Valorisation",     icon: TrendingUp },
         ],
       },
@@ -92,7 +92,8 @@ const PROFILE_CONFIG: Record<string, {
 export default function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
-  const { companies, selectedCompany, setSelectedCompany } = useCompany()
+  const searchParams = useSearchParams()
+  const { companies } = useCompany()
   const [user, setUser] = useState<UserProfile | null>(null)
   const [showSettings, setShowSettings] = useState(false)
 
@@ -101,16 +102,13 @@ export default function Sidebar() {
     if (raw) setUser(JSON.parse(raw))
   }, [])
 
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search)
-      const companyId = params.get("company_id")
-      if (companyId && companies.length > 0) {
-        const company = companies.find(c => c.id === parseInt(companyId))
-        if (company) setSelectedCompany(company)
-      }
-    }
-  }, [companies])
+  // Sur /workspace : aucune entreprise sélectionnée par défaut
+  const isWorkspace = pathname === "/workspace"
+  const currentIdFromUrl = searchParams.get("company_id")
+  const currentCompanyId = isWorkspace ? null : (currentIdFromUrl ?? null)
+  const currentCompany = currentCompanyId
+    ? (companies.find(c => c.id === parseInt(currentCompanyId)) ?? null)
+    : null
 
   const handleLogout = () => {
     localStorage.removeItem("valoris_user")
@@ -146,16 +144,13 @@ export default function Sidebar() {
         <div className="relative">
           <Building2 size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
           <select
-            value={selectedCompany?.id ?? ""}
+            value={currentCompany?.id ?? ""}
             onChange={e => {
-              const company = companies.find(c => c.id === parseInt(e.target.value))
-              if (company) {
-                setSelectedCompany(company)
-                window.location.href = `/?company_id=${company.id}`
-              }
+              if (e.target.value) window.location.href = `/?company_id=${e.target.value}`
             }}
             className="w-full bg-white/5 text-white text-xs rounded-lg pl-8 pr-7 py-2.5 border border-white/10 outline-none cursor-pointer appearance-none hover:bg-white/8 transition-colors"
           >
+            <option value="" className="bg-[#0c1f35] text-white/40">— Sélectionner —</option>
             {companies.map(c => (
               <option key={c.id} value={c.id} className="bg-[#0c1f35]">
                 {c.name}
@@ -175,10 +170,22 @@ export default function Sidebar() {
               {section.links.map(link => {
                 const Icon = link.icon
                 const isActive = pathname === link.href || pathname === link.href.split("?")[0]
-                const href = selectedCompany && link.href !== "/workspace" && link.href !== "/analyse"
-                  ? `${link.href}?company_id=${selectedCompany.id}`
+                const needsCompany = link.href !== "/workspace" && link.href !== "/analyse"
+                const href = needsCompany && currentCompanyId
+                  ? `${link.href}?company_id=${currentCompanyId}`
                   : link.href
-                return (
+                const disabled = needsCompany && !currentCompanyId
+
+                return disabled ? (
+                  <div
+                    key={link.href}
+                    title="Sélectionnez une entreprise d'abord"
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm opacity-30 cursor-not-allowed"
+                  >
+                    <Icon size={15} className="flex-shrink-0 text-white/20" />
+                    <span className="font-medium text-[13px] text-white/30">{link.label}</span>
+                  </div>
+                ) : (
                   <a
                     key={link.href}
                     href={href}

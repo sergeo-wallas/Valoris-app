@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import db from "../../db"
 import PptxGenJS from "pptxgenjs"
+import { calculateDCF } from "../../dcf"
 
 const NAVY  = "1A3A5C"
 const TEAL  = "0D7A5F"
@@ -10,8 +11,11 @@ const SLATE = "64748B"
 const DARK  = "1E293B"
 
 function fmtM(n: number | null | undefined) {
-  if (!n) return "N/A"
-  return `${(n / 1_000_000).toFixed(1)} M€`
+  if (n == null) return "N/A"
+  const abs = Math.abs(n)
+  if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(1)} M€`
+  if (abs >= 1_000)     return `${Math.round(n / 1_000)} k€`
+  return `${Math.round(n)} €`
 }
 function fmtPct(n: number | null | undefined) {
   if (!n) return "N/A"
@@ -202,22 +206,10 @@ export async function GET(request: Request) {
     fontSize: 11, color: WHITE, transparency: 30,
   })
 
-  // Calcul DCF simplifié
   const waccRate = wacc?.wacc ?? 0.095
   const g = 0.02
-  const oldest = financials[financials.length - 1]
-  const nYears = latest?.fiscal_year - oldest?.fiscal_year || 1
-  const cagr = Math.pow((latest?.revenue || 1) / (oldest?.revenue || 1), 1 / nYears) - 1
-  let fcf = latest?.fcf ?? 0
-  const pvFCFs = [1, 2, 3, 4, 5].map(i => {
-    fcf = fcf * (1 + cagr)
-    return fcf / Math.pow(1 + waccRate, i)
-  })
-  const sumPV = pvFCFs.reduce((a, b) => a + b, 0)
-  const tv = (fcf * (1 + g)) / (waccRate - g)
-  const pvTV = tv / Math.pow(1 + waccRate, 5)
-  const ev = sumPV + pvTV
-  const equityValue = ev - (latest?.net_debt ?? 0)
+  const dcf = calculateDCF(financials, { wacc: waccRate, terminal_growth_rate: g, projection_years: 5 })
+  const { sumPVFCF: sumPV, pvTerminalValue: pvTV, enterpriseValue: ev, equityValue } = dcf
 
   const dcfKpis = [
     { label: "PV FCFs projetés",   value: fmtM(sumPV),       color: NAVY },
@@ -245,11 +237,17 @@ export async function GET(request: Request) {
     })
   })
 
-  // Scenarios sensibilité
+  // Scénarios WACC depuis la DB
+  const getScenarioWacc = (scenario: string, fallbackDelta: number) => {
+    const sc: any = db.prepare(
+      "SELECT wacc FROM WACCParameters WHERE company_id = ? AND scenario = ?"
+    ).get(company_id, scenario)
+    return sc?.wacc ?? (waccRate + fallbackDelta)
+  }
   const scenarios = [
-    { label: "Pessimiste", wacc: 0.0999 },
-    { label: "Base",       wacc: 0.095  },
-    { label: "Optimiste",  wacc: 0.0901 },
+    { label: "Pessimiste", wacc: getScenarioWacc("pessimiste", 0.02) },
+    { label: "Base",       wacc: getScenarioWacc("base", 0) },
+    { label: "Optimiste",  wacc: getScenarioWacc("optimiste", -0.015) },
   ]
 
   s4.addText("Analyse de sensibilité WACC", {
@@ -258,12 +256,8 @@ export async function GET(request: Request) {
   })
 
   scenarios.forEach((sc, i) => {
-    let f2 = latest?.fcf ?? 0
-    const pvs2 = [1, 2, 3, 4, 5].map(j => { f2 = f2 * (1 + cagr); return f2 / Math.pow(1 + sc.wacc, j) })
-    const sum2 = pvs2.reduce((a, b) => a + b, 0)
-    const tv2 = (f2 * (1 + g)) / (sc.wacc - g)
-    const pvtv2 = tv2 / Math.pow(1 + sc.wacc, 5)
-    const ev2 = sum2 + pvtv2
+    const scDcf = calculateDCF(financials, { wacc: sc.wacc, terminal_growth_rate: g, projection_years: 5 })
+    const ev2 = scDcf.enterpriseValue
 
     const isBase = i === 1
     s4.addShape(pptx.ShapeType.roundRect, {

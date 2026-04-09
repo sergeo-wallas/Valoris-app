@@ -2,16 +2,17 @@ import { calculateDCF } from "../dcf"
 import { ArrowUpRight, ArrowDownRight, Minus } from "lucide-react"
 import db from "../db"
 
-const DEFAULT_WACC = {
-  wacc: 0.095, beta_unlevered: 0.74, beta_relevered: 1.90,
-  debt_equity_ratio: 2.07, risk_free_rate: 0.035, market_premium: 0.06,
-  size_premium: 0.03, illiquidity_premium: 0.025, ke: 0.20,
-  kd_gross: 0.057, kd_net: 0.043,
+/** Formate un montant en euros avec l'unité adaptée à la magnitude */
+function fmtEur(n: number | null | undefined): string {
+  if (n == null || isNaN(n)) return "—"
+  const abs = Math.abs(n)
+  if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(1)} M€`
+  if (abs >= 1_000)     return `${Math.round(n / 1_000)} k€`
+  return `${Math.round(n)} €`
 }
 
-function getCompany(companyId: string) {
-  const companies = db.prepare("SELECT * FROM Company").all() as any[]
-  return companies.find((c: any) => c.id === parseInt(companyId)) ?? companies[0]
+function fmtPct(n: number): string {
+  return `${(n * 100).toFixed(1)}%`
 }
 
 function getFinancials(companyId: string) {
@@ -19,15 +20,21 @@ function getFinancials(companyId: string) {
 }
 
 function getWACC(companyId: string, scenario: string = "base"): any {
-  return db.prepare("SELECT * FROM WACCParameters WHERE company_id = ? AND scenario = ?").get(companyId, scenario)
-    ?? { ...DEFAULT_WACC, company_id: parseInt(companyId), scenario }
+  return db.prepare("SELECT * FROM WACCParameters WHERE company_id = ? AND scenario = ?").get(companyId, scenario) ?? null
 }
 
-export default async function Dashboard({ companyId }: { companyId: string }) {
-  const company = getCompany(companyId)
+export default async function Dashboard({ companyId, company }: { companyId: string, company: any }) {
   const financials = getFinancials(companyId)
-  const waccData = getWACC(companyId)
-  const allScenarios = ["pessimiste", "base", "optimiste"].map(s => getWACC(companyId, s))
+  const waccBase = getWACC(companyId, "base")
+
+  // Scénarios : utilise le WACC base calculé avec ±variation, ou les scénarios sauvegardés
+  const waccBase_val   = waccBase?.wacc ?? 0.095
+  const allScenarios = [
+    getWACC(companyId, "pessimiste") ?? { scenario: "pessimiste", wacc: waccBase_val + 0.02 },
+    waccBase                         ?? { scenario: "base",        wacc: waccBase_val },
+    getWACC(companyId, "optimiste")  ?? { scenario: "optimiste",   wacc: Math.max(0.03, waccBase_val - 0.015) },
+  ]
+  const waccData = waccBase ?? { wacc: waccBase_val, scenario: "base" }
   const latest = financials[0]
 
   if (!latest) {
@@ -35,8 +42,8 @@ export default async function Dashboard({ companyId }: { companyId: string }) {
       <main className="flex-1 bg-[#f4f7fb] p-8">
         <div className="flex items-start justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">{company?.name}</h1>
-            <p className="text-slate-400 text-sm mt-1">SIREN {company?.siren}</p>
+            <h1 className="text-2xl font-bold text-slate-900">{company.name}</h1>
+            <p className="text-slate-400 text-sm mt-1">SIREN {company.siren}</p>
           </div>
         </div>
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-16 text-center max-w-lg mx-auto mt-10">
@@ -68,9 +75,7 @@ export default async function Dashboard({ companyId }: { companyId: string }) {
     ...calculateDCF(financials, { wacc: w.wacc, terminal_growth_rate: 0.02, projection_years: 5 })
   }))
 
-  const formatM = (n: number) => `${(n / 1_000_000).toFixed(1)} M€`
-  const formatPct = (n: number) => `${(n * 100).toFixed(1)}%`
-  const ebitdaMargin = latest ? (latest.ebitda / latest.revenue * 100).toFixed(1) : "-"
+  const ebitdaMargin = latest?.ebitda && latest?.revenue ? (latest.ebitda / latest.revenue * 100).toFixed(1) : "—"
   const revenueGrowth = financials[1]
     ? ((latest.revenue - financials[1].revenue) / financials[1].revenue * 100).toFixed(1)
     : null
@@ -78,28 +83,28 @@ export default async function Dashboard({ companyId }: { companyId: string }) {
   const kpis = [
     {
       label: "Chiffre d'affaires",
-      value: formatM(latest?.revenue),
+      value: fmtEur(latest?.revenue),
       sub: revenueGrowth !== null ? `${revenueGrowth}% vs N-1` : "N-1 non disponible",
       trend: revenueGrowth !== null ? parseFloat(revenueGrowth) : 0,
       accent: "#1a3a5c",
     },
     {
       label: "EBITDA",
-      value: formatM(latest?.ebitda),
+      value: fmtEur(latest?.ebitda),
       sub: `Marge ${ebitdaMargin}%`,
       trend: parseFloat(ebitdaMargin),
       accent: "#0d7a5f",
     },
     {
       label: "Résultat net",
-      value: formatM(latest?.net_income),
+      value: fmtEur(latest?.net_income),
       sub: `Exercice ${latest?.fiscal_year}`,
       trend: latest?.net_income >= 0 ? 1 : -1,
       accent: "#0d7a5f",
     },
     {
       label: "Dette nette",
-      value: formatM(latest?.net_debt),
+      value: fmtEur(latest?.net_debt),
       sub: latest?.equity ? `Levier ${(latest.net_debt / latest.equity).toFixed(1)}x` : "—",
       trend: -1,
       accent: "#dc2626",
@@ -183,15 +188,15 @@ export default async function Dashboard({ companyId }: { companyId: string }) {
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="bg-gradient-to-br from-[#0c1f35] to-[#1a3a5c] rounded-2xl p-6 shadow-lg">
           <p className="text-white/50 text-xs font-medium uppercase tracking-wide mb-3">Valeur d'entreprise</p>
-          <p className="text-3xl font-bold text-white tabular-nums">{formatM(dcf.enterpriseValue)}</p>
+          <p className="text-3xl font-bold text-white tabular-nums">{fmtEur(dcf.enterpriseValue)}</p>
           <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
             <p className="text-white/35 text-xs">Modèle DCF</p>
-            <span className="text-white/50 text-xs bg-white/8 px-2 py-0.5 rounded-full">WACC {formatPct(waccData.wacc)}</span>
+            <span className="text-white/50 text-xs bg-white/8 px-2 py-0.5 rounded-full">WACC {fmtPct(waccData.wacc)}</span>
           </div>
         </div>
         <div className="bg-gradient-to-br from-[#0a5040] to-[#0d7a5f] rounded-2xl p-6 shadow-lg">
           <p className="text-white/50 text-xs font-medium uppercase tracking-wide mb-3">Equity Value</p>
-          <p className="text-3xl font-bold text-white tabular-nums">{formatM(dcf.equityValue)}</p>
+          <p className="text-3xl font-bold text-white tabular-nums">{fmtEur(dcf.equityValue)}</p>
           <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
             <p className="text-white/35 text-xs">EV − Dette nette</p>
             <span className="text-white/50 text-xs bg-white/8 px-2 py-0.5 rounded-full">g = 2.0%</span>
@@ -228,10 +233,10 @@ export default async function Dashboard({ companyId }: { companyId: string }) {
                   </span>
                 </div>
                 <p className="text-[10px] font-medium text-slate-400 uppercase tracking-wide mb-1">Valeur entreprise</p>
-                <p className="text-2xl font-bold text-slate-900 tabular-nums mb-4">{formatM(s.enterpriseValue)}</p>
+                <p className="text-2xl font-bold text-slate-900 tabular-nums mb-4">{fmtEur(s.enterpriseValue)}</p>
                 <p className="text-[10px] font-medium text-slate-400 uppercase tracking-wide mb-1">Equity Value</p>
                 <p className={`text-base font-bold tabular-nums ${s.equityValue >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-                  {formatM(s.equityValue)}
+                  {fmtEur(s.equityValue)}
                 </p>
               </div>
             )
@@ -239,22 +244,18 @@ export default async function Dashboard({ companyId }: { companyId: string }) {
         </div>
       </div>
 
-      {/* DÉTAIL DCF */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-        <h2 className="text-sm font-semibold text-slate-900 mb-4">Détail de la valorisation</h2>
-        <div className="grid grid-cols-4 gap-3">
-          {[
-            { label: "FCF de référence",   value: formatM(dcf.baseFCF) },
-            { label: "CAGR CA historique", value: `${dcf.cagr}%` },
-            { label: "PV FCF projetés",    value: formatM(dcf.sumPVFCF) },
-            { label: "PV valeur terminale",value: formatM(dcf.pvTerminalValue) },
-          ].map(item => (
-            <div key={item.label} className="bg-slate-50 rounded-xl p-4 border border-slate-100">
-              <p className="text-[10px] font-medium text-slate-400 uppercase tracking-wide mb-2">{item.label}</p>
-              <p className="text-lg font-bold text-slate-900 tabular-nums">{item.value}</p>
-            </div>
-          ))}
+      {/* LIEN VERS VALORISATION */}
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-slate-900">Détail de la valorisation</p>
+          <p className="text-xs text-slate-400 mt-0.5">FCF projetés, valeur terminale, bridge EV → Equity</p>
         </div>
+        <a
+          href={`/valorisation?company_id=${companyId}`}
+          className="flex items-center gap-2 px-4 py-2.5 bg-[#1a3a5c] text-white text-sm font-medium rounded-xl hover:bg-[#0f2a45] transition-all shadow-sm"
+        >
+          Voir le détail →
+        </a>
       </div>
 
     </main>
