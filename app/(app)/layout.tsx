@@ -19,15 +19,15 @@ export default function AppLayout({
   }, [router])
 
   return (
-    <Suspense>
-      <CompanyProvider>
-        <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden">
+      <Suspense>
+        <CompanyProvider>
           <Sidebar />
-          <div className="flex-1 overflow-y-auto">
-            {children}
-          </div>
-        </div>
-      </CompanyProvider>
-    </Suspense>
+        </CompanyProvider>
+      </Suspense>
+      <div className="flex-1 overflow-y-auto">
+        {children}
+      </div>
+    </div>
   )
 }

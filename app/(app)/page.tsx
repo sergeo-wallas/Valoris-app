@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import Dashboard   from "../components/Dashboard"
 import RatiosTable from "../components/RatiosTable"
 import ESGPanel    from "../components/ESGPanel"
@@ -6,19 +7,25 @@ import BodaccCard  from "../components/BodaccCard"
 import db from "../db"
 import { Building2, Plus } from "lucide-react"
 
+function CardSkeleton() {
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm mt-6 h-48 animate-pulse" />
+  )
+}
+
 export default async function Home({
   searchParams,
 }: {
   searchParams: Promise<{ company_id?: string }>
 }) {
   const params = await searchParams
-  const companyId = params.company_id ?? null
+  const companyId = params.company_id
 
   const company: any = companyId
     ? db.prepare("SELECT * FROM Company WHERE id = ?").get(companyId)
     : null
 
-  if (!company) {
+  if (!company || !companyId) {
     return (
       <main className="flex-1 bg-[#f4f7fb] p-8 flex items-center justify-center">
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-16 text-center max-w-lg">
@@ -45,16 +52,18 @@ export default async function Home({
     <div className="pb-8">
       <Dashboard companyId={companyId} company={company} />
 
-      {/* Ratios + ESG */}
       <div className="grid grid-cols-2 gap-6 px-8">
         <RatiosTable companyId={companyId} />
         <ESGPanel companyId={companyId} />
       </div>
 
-      {/* Sirene INSEE + BODACC */}
       <div className="grid grid-cols-2 gap-6 px-8">
-        <SireneCard companyId={companyId} />
-        <BodaccCard companyId={companyId} />
+        <Suspense fallback={<CardSkeleton />}>
+          <SireneCard companyId={companyId} />
+        </Suspense>
+        <Suspense fallback={<CardSkeleton />}>
+          <BodaccCard companyId={companyId} />
+        </Suspense>
       </div>
     </div>
   )

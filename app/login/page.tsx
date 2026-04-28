@@ -92,11 +92,14 @@ export default function Login() {
           <form onSubmit={handleLogin} className="space-y-5">
 
             <div>
-              <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1.5 block">
+              <label htmlFor="email" className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1.5 block">
                 Email
               </label>
               <input
+                id="email"
+                name="email"
                 type="email"
+                autoComplete="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 placeholder="vous@cabinet.fr"
@@ -107,7 +110,7 @@ export default function Login() {
 
             <div>
               <div className="flex justify-between mb-1.5">
-                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">
+                <label htmlFor="password" className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">
                   Mot de passe
                 </label>
                 <span className="text-xs text-[#1a3a5c] cursor-pointer hover:underline">
@@ -115,7 +118,10 @@ export default function Login() {
                 </span>
               </div>
               <input
+                id="password"
+                name="password"
                 type="password"
+                autoComplete="current-password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 placeholder="••••••••"
