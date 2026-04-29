@@ -1,4 +1,4 @@
-import { CheckCircle2, XCircle, Building2, Users, Calendar, Tag, WifiOff } from "lucide-react"
+import { CheckCircle2, XCircle, Building2, Users, Calendar, Tag, WifiOff, MapPin, UserCircle } from "lucide-react"
 import db from "../db"
 import { cookies } from "next/headers"
 
@@ -13,18 +13,27 @@ const TRANCHES: Record<string, string> = {
 
 const CAT_JURIDIQUE: Record<string, string> = {
   "5710": "SAS",   "5720": "SASU",  "5499": "SARL",  "5498": "EURL",
-  "6540": "SA",    "6552": "SA",    "1000": "EI",     "5306": "Coopérative",
-  "5485": "SCOP",  "9220": "Asso.",
+  "5599": "SA",    "6540": "SA",    "6552": "SA",    "6530": "SE",
+  "1000": "EI",    "1100": "EI",    "5306": "Coopérative",
+  "5485": "SCOP",  "5308": "SCIC",  "9220": "Asso.", "9221": "Asso.",
+}
+
+const CAT_ENTREPRISE: Record<string, string> = {
+  "GE":  "Grande entreprise",
+  "ETI": "ETI",
+  "PME": "PME",
+  "MI":  "Micro-entreprise",
 }
 
 async function fetchSirene(siren: string) {
   try {
     const res = await fetch(
-      `https://entreprise.data.gouv.fr/api/sirene/v3/unites_legales/${siren}`,
+      `https://recherche-entreprises.api.gouv.fr/search?q=${siren}&page=1&per_page=1`,
       { headers: { "Accept": "application/json" }, next: { revalidate: 3600 } }
     )
     if (!res.ok) return null
-    return res.json()
+    const data = await res.json()
+    return data.results?.[0] ?? null
   } catch {
     return null
   }
@@ -48,26 +57,32 @@ export default async function SireneCard({ companyId }: { companyId: string | nu
     )
   }
 
-  const data = await fetchSirene(company.siren)
-  const ul = data?.unite_legale
+  const ul = await fetchSirene(company.siren)
 
-  const isActive  = ul?.etat_administratif_unite_legale === "A"
-  const dateCreation = ul?.date_creation_unite_legale
-    ? new Date(ul.date_creation_unite_legale).toLocaleDateString("fr-FR", {
-        day: "numeric", month: "long", year: "numeric"
-      })
+  const isActive      = ul?.etat_administratif === "A"
+  const dateCreation  = ul?.date_creation
+    ? new Date(ul.date_creation).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
     : null
-  const tranche  = TRANCHES[ul?.tranche_effectif_salaries_unite_legale ?? ""] ?? "NC"
-  const categorie = ul?.categorie_entreprise ?? null
-  const formeJuridique = CAT_JURIDIQUE[ul?.categorie_juridique_unite_legale ?? ""] ?? ul?.categorie_juridique_unite_legale ?? "NC"
-  const estEmployeur = ul?.caractere_employeur_unite_legale === "O"
+  const tranche       = TRANCHES[ul?.tranche_effectif_salarie ?? ""] ?? "NC"
+  const anneeEffectif = ul?.annee_tranche_effectif_salarie ?? null
+  const categorie     = CAT_ENTREPRISE[ul?.categorie_entreprise ?? ""] ?? ul?.categorie_entreprise ?? null
+  const formeJuridique = CAT_JURIDIQUE[ul?.nature_juridique ?? ""] ?? ul?.nature_juridique ?? "NC"
+  const estEmployeur  = ul?.siege?.caractere_employeur === "O"
+  const adresse       = ul?.siege?.adresse ?? null
+
+  // Dirigeant principal (premier de type "personne physique" avec qualité de direction)
+  const dirigeants: any[] = ul?.dirigeants ?? []
+  const dirigeantPrincipal = dirigeants.find(
+    d => d.type_dirigeant === "personne physique" &&
+      /directeur|président|gérant/i.test(d.qualite ?? "")
+  ) ?? dirigeants.find(d => d.type_dirigeant === "personne physique")
 
   return (
     <div className="bg-white rounded-2xl border border-slate-100 shadow-sm mt-6">
       <div className="px-6 py-5 border-b border-slate-50 flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-slate-900">Fiche légale INSEE</h2>
-          <p className="text-xs text-slate-400 mt-0.5">Source : API Sirene · SIREN {company.siren}</p>
+          <p className="text-xs text-slate-400 mt-0.5">Source : Annuaire Entreprises · SIREN {company.siren}</p>
         </div>
         {ul ? (
           <div className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full ${
@@ -90,7 +105,7 @@ export default async function SireneCard({ companyId }: { companyId: string | nu
           <p className="text-sm text-slate-400">Données Sirene non disponibles pour ce SIREN.</p>
         </div>
       ) : (
-        <div className="p-5">
+        <div className="p-5 space-y-3">
           <div className="grid grid-cols-2 gap-3">
 
             {dateCreation && (
@@ -119,8 +134,8 @@ export default async function SireneCard({ companyId }: { companyId: string | nu
                 <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Effectifs</p>
               </div>
               <p className="text-sm font-bold text-slate-900">{tranche}</p>
-              {ul.annee_effectif_salaries_unite_legale && (
-                <p className="text-xs text-slate-400 mt-0.5">Réf. {ul.annee_effectif_salaries_unite_legale}</p>
+              {anneeEffectif && (
+                <p className="text-xs text-slate-400 mt-0.5">Réf. {anneeEffectif}</p>
               )}
             </div>
 
@@ -134,6 +149,32 @@ export default async function SireneCard({ companyId }: { companyId: string | nu
             </div>
 
           </div>
+
+          {/* Adresse siège */}
+          {adresse && (
+            <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 flex items-start gap-2">
+              <MapPin size={13} className="text-slate-400 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">Siège social</p>
+                <p className="text-sm font-medium text-slate-800">{adresse}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Dirigeant principal */}
+          {dirigeantPrincipal && (
+            <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 flex items-start gap-2">
+              <UserCircle size={13} className="text-slate-400 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">Dirigeant</p>
+                <p className="text-sm font-bold text-slate-900">
+                  {dirigeantPrincipal.prenoms} {dirigeantPrincipal.nom}
+                </p>
+                <p className="text-xs text-slate-400">{dirigeantPrincipal.qualite}</p>
+              </div>
+            </div>
+          )}
+
         </div>
       )}
     </div>

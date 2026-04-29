@@ -36,17 +36,32 @@ const STYLE = {
   neutral: { bg: "bg-slate-50 border-slate-100", text: "text-slate-700",  badge: "bg-slate-100 text-slate-500", icon: FileText },
 }
 
-async function fetchBodacc(siren: string): Promise<BodaccRecord[]> {
+async function fetchBodacc(siren: string): Promise<BodaccRecord[] | null> {
+  const BASE = "https://bodacc.fr/api/explore/v2.1/catalog/datasets/annonces-commerciales/records"
+  const opts = { headers: { "Accept": "application/json" }, next: { revalidate: 3600 } }
+
   try {
-    const res = await fetch(
-      `https://bodacc.fr/api/explore/v2.1/catalog/datasets/annonces-commerciales/records?where=siren%3D%22${siren}%22&limit=8&order_by=dateparution%20desc`,
-      { headers: { "Accept": "application/json" }, next: { revalidate: 3600 } }
+    // Essai 1 : filtre sur le champ registre (SIREN stocké dans ce champ en v2.1)
+    const res1 = await fetch(
+      `${BASE}?where=registre%3D%22${siren}%22&limit=8&order_by=dateparution%20desc`,
+      opts
     )
-    if (!res.ok) return []
-    const data = await res.json()
-    return (data.results ?? data.records?.map((r: any) => r.fields) ?? []) as BodaccRecord[]
+    if (res1.ok) {
+      const data = await res1.json()
+      const results = data.results ?? []
+      if (results.length > 0) return results as BodaccRecord[]
+    }
+
+    // Essai 2 : recherche texte libre sur le SIREN (fallback universel)
+    const res2 = await fetch(
+      `${BASE}?q=${siren}&limit=8&order_by=dateparution%20desc`,
+      opts
+    )
+    if (!res2.ok) return null
+    const data2 = await res2.json()
+    return (data2.results ?? []) as BodaccRecord[]
   } catch {
-    return []
+    return null
   }
 }
 
@@ -69,6 +84,16 @@ export default async function BodaccCard({ companyId }: { companyId: string | nu
   }
 
   const records = await fetchBodacc(company.siren)
+
+  if (records === null) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm mt-6 p-8 flex flex-col items-center justify-center text-center">
+        <WifiOff size={20} className="text-slate-300 mb-3" />
+        <p className="text-sm font-semibold text-slate-500">BODACC temporairement indisponible</p>
+        <p className="text-xs text-slate-400 mt-1">Les données seront actualisées au prochain chargement</p>
+      </div>
+    )
+  }
 
   const hasDanger  = records.some(r => getRisk(r.typeavis_lib ?? "").level === "danger")
   const hasWarning = records.some(r => getRisk(r.typeavis_lib ?? "").level === "warning")

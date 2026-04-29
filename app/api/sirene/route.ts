@@ -8,21 +8,19 @@ export async function GET(request: NextRequest) {
 
   try {
     const res = await fetch(
-      `https://entreprise.data.gouv.fr/api/sirene/v3/unites_legales/${siren}`,
-      {
-        headers: { "Accept": "application/json" },
-        next: { revalidate: 3600 },
-      }
+      `https://recherche-entreprises.api.gouv.fr/search?q=${siren}&page=1&per_page=1`,
+      { headers: { "Accept": "application/json" }, next: { revalidate: 3600 } }
     )
-    if (res.status === 404) {
-      return NextResponse.json({ error: "SIREN non trouvé dans la base Sirene" }, { status: 404 })
-    }
     if (!res.ok) {
-      return NextResponse.json({ error: "Erreur API Sirene INSEE" }, { status: res.status })
+      return NextResponse.json({ error: "Erreur API Annuaire Entreprises" }, { status: res.status })
     }
     const data = await res.json()
-    return NextResponse.json(data)
+    const result = data.results?.[0] ?? null
+    if (!result) {
+      return NextResponse.json({ error: "SIREN non trouvé" }, { status: 404 })
+    }
+    return NextResponse.json(result)
   } catch {
-    return NextResponse.json({ error: "Impossible de joindre l'API Sirene INSEE" }, { status: 503 })
+    return NextResponse.json({ error: "Impossible de joindre l'API Annuaire Entreprises" }, { status: 503 })
   }
 }

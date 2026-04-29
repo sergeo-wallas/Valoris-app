@@ -6,30 +6,27 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "SIREN invalide" }, { status: 400 })
   }
 
+  const BASE = "https://bodacc.fr/api/explore/v2.1/catalog/datasets/annonces-commerciales/records"
+  const opts = { headers: { "Accept": "application/json" }, next: { revalidate: 3600 } }
+
   try {
-    // API BODACC via Open Data Soft (données officielles du Journal Officiel)
-    const url = `https://bodacc.fr/api/explore/v2.1/catalog/datasets/annonces-commerciales/records?where=siren%3D%22${siren}%22&limit=10&order_by=dateparution%20desc`
-
-    const res = await fetch(url, {
-      headers: { "Accept": "application/json" },
-      next: { revalidate: 3600 },
-    })
-
-    if (!res.ok) {
-      // Fallback: recherche texte libre
-      const fallback = await fetch(
-        `https://bodacc.fr/api/explore/v2.1/catalog/datasets/annonces-commerciales/records?q=${siren}&limit=10&order_by=dateparution%20desc`,
-        { headers: { "Accept": "application/json" }, next: { revalidate: 3600 } }
-      )
-      if (!fallback.ok) {
-        return NextResponse.json({ total_count: 0, results: [] })
-      }
-      const data = await fallback.json()
-      return NextResponse.json(data)
+    // Essai 1 : filtre sur le champ registre (champ SIREN en API v2.1)
+    const res1 = await fetch(
+      `${BASE}?where=registre%3D%22${siren}%22&limit=10&order_by=dateparution%20desc`,
+      opts
+    )
+    if (res1.ok) {
+      const data = await res1.json()
+      if ((data.results ?? []).length > 0) return NextResponse.json(data)
     }
 
-    const data = await res.json()
-    return NextResponse.json(data)
+    // Essai 2 : recherche texte libre sur le SIREN
+    const res2 = await fetch(
+      `${BASE}?q=${siren}&limit=10&order_by=dateparution%20desc`,
+      opts
+    )
+    if (!res2.ok) return NextResponse.json({ total_count: 0, results: [] })
+    return NextResponse.json(await res2.json())
   } catch {
     return NextResponse.json({ total_count: 0, results: [] })
   }
