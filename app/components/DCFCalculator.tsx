@@ -138,13 +138,14 @@ export default function DCFCalculator({ financials, params, initialResult, years
           </div>
           <div className="flex items-center gap-2">
             {changed && (
-              <button
+              <div
+                role="button"
                 onClick={e => { e.stopPropagation(); reset() }}
-                className="flex items-center gap-1.5 text-[11px] text-slate-400 hover:text-slate-700 transition-colors px-2 py-1 rounded-lg hover:bg-slate-50"
+                className="flex items-center gap-1.5 text-[11px] text-slate-400 hover:text-slate-700 transition-colors px-2 py-1 rounded-lg hover:bg-slate-50 cursor-pointer"
               >
                 <RefreshCw size={11} />
                 Réinitialiser
-              </button>
+              </div>
             )}
             {open ? <ChevronUp size={15} className="text-slate-300" /> : <ChevronDown size={15} className="text-slate-300" />}
           </div>
