@@ -280,75 +280,99 @@ export async function GET(request: Request) {
     })
   })
 
-  // ── SLIDE 5 : RECOMMANDATIONS IA ────────────────────────────
+  // ── SLIDE 5 : ANALYSE ───────────────────────────────────────
+  // Priorité : commentaire analyste → sinon recommandations IA
+  const savedCommentary: string = (company as any)?.commentary ?? ""
   const s5 = pptx.addSlide()
   addBg(s5, WHITE)
   s5.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: "100%", h: 1.1, fill: { color: "0A1929" } })
 
-  s5.addText("Recommandations stratégiques", {
-    x: 0.5, y: 0.22, w: 10, h: 0.55,
-    fontSize: 22, bold: true, color: WHITE,
-  })
-  s5.addText("Générées par l'agent IA Valoris", {
-    x: 0.5, y: 0.72, w: 10, h: 0.3,
-    fontSize: 11, color: TEAL,
-  })
-
-  // Fetch recommandations
-  let recos: any[] = []
-  try {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
-    const recoRes = await fetch(
-      `${baseUrl}/api/ai/recommendations?company_id=${company_id}`,
-      { signal: AbortSignal.timeout(10000) }
-    )
-    if (recoRes.ok) {
-      const d = await recoRes.json()
-      recos = d.recommendations ?? []
-    }
-  } catch { /* silencieux */ }
-
-  const catColors: Record<string, string> = {
-    "Opérationnel": NAVY, "Financier": TEAL, "Stratégique": "7C3AED", "Risques": "DC2626"
-  }
-  const priorityColors: Record<string, string> = {
-    haute: "EF4444", moyenne: "F59E0B", faible: TEAL
-  }
-
-  recos.slice(0, 4).forEach((r: any, i: number) => {
-    const col = i % 2
-    const row = Math.floor(i / 2)
-    const x = 0.4 + col * 6.2
-    const y = 1.3 + row * 2.5
+  if (savedCommentary.trim()) {
+    // Commentaire analyste
+    s5.addText("Analyse", {
+      x: 0.5, y: 0.22, w: 10, h: 0.55,
+      fontSize: 22, bold: true, color: WHITE,
+    })
+    s5.addText("Commentaires de l'analyste", {
+      x: 0.5, y: 0.72, w: 10, h: 0.3,
+      fontSize: 11, color: TEAL,
+    })
 
     s5.addShape(pptx.ShapeType.roundRect, {
-      x, y, w: 6.0, h: 2.3,
+      x: 0.4, y: 1.3, w: 11.8, h: 4.2,
       fill: { color: "F8FAFC" },
       line: { color: "E2E8F0", width: 1 },
-      rectRadius: 0.1,
+      rectRadius: 0.12,
     })
-    // Bande couleur catégorie
-    s5.addShape(pptx.ShapeType.rect, {
-      x, y, w: 6.0, h: 0.06,
-      fill: { color: catColors[r.category] ?? NAVY },
+    s5.addText(savedCommentary, {
+      x: 0.7, y: 1.5, w: 11.2, h: 3.8,
+      fontSize: 11, color: DARK, lineSpacingMultiple: 1.6, wrap: true, valign: "top",
     })
-    s5.addText(r.category, {
-      x: x + 0.2, y: y + 0.12, w: 3, h: 0.3,
-      fontSize: 8, bold: true, color: catColors[r.category] ?? NAVY,
+  } else {
+    // Fallback : recommandations IA
+    s5.addText("Recommandations stratégiques", {
+      x: 0.5, y: 0.22, w: 10, h: 0.55,
+      fontSize: 22, bold: true, color: WHITE,
     })
-    s5.addText(`● ${r.priority}`, {
-      x: x + 3.5, y: y + 0.12, w: 2.3, h: 0.3,
-      fontSize: 8, color: priorityColors[r.priority] ?? SLATE, align: "right",
+    s5.addText("Générées par l'agent IA Valoris", {
+      x: 0.5, y: 0.72, w: 10, h: 0.3,
+      fontSize: 11, color: TEAL,
     })
-    s5.addText(r.title, {
-      x: x + 0.2, y: y + 0.5, w: 5.6, h: 0.45,
-      fontSize: 12, bold: true, color: DARK,
+
+    let recos: any[] = []
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
+      const recoRes = await fetch(
+        `${baseUrl}/api/ai/recommendations?company_id=${company_id}`,
+        { signal: AbortSignal.timeout(10000) }
+      )
+      if (recoRes.ok) {
+        const d = await recoRes.json()
+        recos = d.recommendations ?? []
+      }
+    } catch { /* silencieux */ }
+
+    const catColors: Record<string, string> = {
+      "Opérationnel": NAVY, "Financier": TEAL, "Stratégique": "7C3AED", "Risques": "DC2626"
+    }
+    const priorityColors: Record<string, string> = {
+      haute: "EF4444", moyenne: "F59E0B", faible: TEAL
+    }
+
+    recos.slice(0, 4).forEach((r: any, i: number) => {
+      const col = i % 2
+      const row = Math.floor(i / 2)
+      const x = 0.4 + col * 6.2
+      const y = 1.3 + row * 2.5
+
+      s5.addShape(pptx.ShapeType.roundRect, {
+        x, y, w: 6.0, h: 2.3,
+        fill: { color: "F8FAFC" },
+        line: { color: "E2E8F0", width: 1 },
+        rectRadius: 0.1,
+      })
+      s5.addShape(pptx.ShapeType.rect, {
+        x, y, w: 6.0, h: 0.06,
+        fill: { color: catColors[r.category] ?? NAVY },
+      })
+      s5.addText(r.category, {
+        x: x + 0.2, y: y + 0.12, w: 3, h: 0.3,
+        fontSize: 8, bold: true, color: catColors[r.category] ?? NAVY,
+      })
+      s5.addText(`● ${r.priority}`, {
+        x: x + 3.5, y: y + 0.12, w: 2.3, h: 0.3,
+        fontSize: 8, color: priorityColors[r.priority] ?? SLATE, align: "right",
+      })
+      s5.addText(r.title, {
+        x: x + 0.2, y: y + 0.5, w: 5.6, h: 0.45,
+        fontSize: 12, bold: true, color: DARK,
+      })
+      s5.addText(r.body, {
+        x: x + 0.2, y: y + 1.0, w: 5.6, h: 1.2,
+        fontSize: 9, color: SLATE, wrap: true,
+      })
     })
-    s5.addText(r.body, {
-      x: x + 0.2, y: y + 1.0, w: 5.6, h: 1.2,
-      fontSize: 9, color: SLATE, wrap: true,
-    })
-  })
+  }
 
   // ── SLIDE 6 : PROCHAINES ÉTAPES ─────────────────────────────
   const s6 = pptx.addSlide()

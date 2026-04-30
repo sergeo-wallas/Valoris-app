@@ -285,28 +285,48 @@ export async function GET(request: Request) {
 </html>
 `
 
-  // ── Recommandations IA ──────────────────────────────────────
+  // ── Analyse & Recommandations ───────────────────────────────
+  // Priorité : commentaire rédigé par l'analyste → sinon recommandations IA
+  const savedCommentary: string = (company as any)?.commentary ?? ""
   let recoHtml = ""
-  try {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
-    const recoRes = await fetch(
-      `${baseUrl}/api/ai/recommendations?company_id=${company_id}`,
-      { signal: AbortSignal.timeout(30000) }
-    )
-    if (recoRes.ok) {
-      const recoData = await recoRes.json()
-      const recos: any[] = recoData.recommendations ?? []
-      const isPlaceholder = recoData.source === "placeholder"
 
-      const priorityColor: Record<string, string> = {
-        haute: "#ef4444", moyenne: "#f59e0b", faible: "#0d7a5f"
-      }
-      const categoryColor: Record<string, string> = {
-        "Opérationnel": "1a3a5c", "Financier": "0d7a5f",
-        "Stratégique": "7c3aed", "Risques": "dc2626"
-      }
+  if (savedCommentary.trim()) {
+    // Commentaire analyste : prose simple, mise en page sobre
+    recoHtml = `
+<div style="page-break-before:always;"></div>
+<div style="background:#0a1929; padding:40px 50px; min-height:120px;">
+  <div style="font-size:11px; color:rgba(255,255,255,0.5); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">Analyse</div>
+  <div style="font-size:28px; font-weight:700; color:white; margin-bottom:4px;">Commentaires de l'analyste</div>
+  <div style="font-size:12px; color:rgba(255,255,255,0.4);">${company?.name ?? ""} · ${date}</div>
+  <div style="height:4px; background:#0d7a5f; margin-top:24px; border-radius:2px;"></div>
+</div>
+<div style="padding:40px 50px;">
+  <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:28px 32px;">
+    <p style="font-size:11px; color:#475569; line-height:1.9; white-space:pre-wrap;">${savedCommentary.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>
+  </div>
+</div>`
+  } else {
+    // Fallback : recommandations IA auto
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
+      const recoRes = await fetch(
+        `${baseUrl}/api/ai/recommendations?company_id=${company_id}`,
+        { signal: AbortSignal.timeout(30000) }
+      )
+      if (recoRes.ok) {
+        const recoData = await recoRes.json()
+        const recos: any[] = recoData.recommendations ?? []
+        const isPlaceholder = recoData.source === "placeholder"
 
-      recoHtml = `
+        const priorityColor: Record<string, string> = {
+          haute: "#ef4444", moyenne: "#f59e0b", faible: "#0d7a5f"
+        }
+        const categoryColor: Record<string, string> = {
+          "Opérationnel": "1a3a5c", "Financier": "0d7a5f",
+          "Stratégique": "7c3aed", "Risques": "dc2626"
+        }
+
+        recoHtml = `
 <div style="page-break-before:always;"></div>
 <div style="background:#0a1929; padding:40px 50px; min-height:120px;">
   <div style="font-size:11px; color:rgba(255,255,255,0.5); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">Analyse stratégique</div>
@@ -318,7 +338,7 @@ export async function GET(request: Request) {
 </div>
 <div style="padding:40px 50px;">
   ${isPlaceholder ? `<div style="background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:12px 16px; margin-bottom:20px; font-size:10px; color:#78350f;">
-    ⚡ <strong>Mode démonstration</strong> — Définissez ANTHROPIC_API_KEY dans .env.local pour activer les recommandations IA personnalisées.
+    ⚡ <strong>Mode démonstration</strong> — Rédigez un commentaire dans la page Valorisation ou configurez ANTHROPIC_API_KEY pour une analyse personnalisée.
   </div>` : ""}
   <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
     ${recos.map((r: any) => `
@@ -333,9 +353,10 @@ export async function GET(request: Request) {
     `).join("")}
   </div>
 </div>`
+      }
+    } catch {
+      // Inaccessible — on continue sans analyse
     }
-  } catch {
-    // Recommandations inaccessibles — on continue sans elles
   }
 
   // Injecter les recommandations dans le HTML

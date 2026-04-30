@@ -1,6 +1,7 @@
 import { calculateDCF } from "../../dcf"
 import { computeESGResult } from "../../lib/esg"
 import DCFCalculator from "../../components/DCFCalculator"
+import CommentaryPanel from "../../components/CommentaryPanel"
 import { Download, FileSpreadsheet, Building2, Presentation } from "lucide-react"
 import db from "../../db"
 
@@ -147,6 +148,12 @@ export default async function Valorisation({
         years={years}
         netDebt={latest?.net_debt ?? null}
         esgGrowthAdj={esgGrowthAdj}
+      />
+
+      {/* COMMENTAIRES & ANALYSE */}
+      <CommentaryPanel
+        companyId={companyId!}
+        initialCommentary={(company as any).commentary ?? ""}
       />
 
     </main>

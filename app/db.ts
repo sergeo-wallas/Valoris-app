@@ -156,6 +156,9 @@ const companyCols = db.prepare("PRAGMA table_info(Company)").all() as { name: st
 if (!companyCols.some(c => c.name === "owner_email")) {
   db.exec("ALTER TABLE Company ADD COLUMN owner_email TEXT")
 }
+if (!companyCols.some(c => c.name === "commentary")) {
+  db.exec("ALTER TABLE Company ADD COLUMN commentary TEXT")
+}
 
 // Migration : colonne is_risk + index unique ESGCriteria
 const esgCols = db.prepare("PRAGMA table_info(ESGCriteria)").all() as { name: string }[]
