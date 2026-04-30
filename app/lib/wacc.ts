@@ -91,7 +91,8 @@ export function computeWACC(inputs: WACCInputs): WACCResult {
   const sp   = inputs.size_premium        ?? MARKET_DEFAULTS.size_premium
   const ip   = inputs.illiquidity_premium ?? MARKET_DEFAULTS.illiquidity_premium
   const kd   = inputs.kd_gross            ?? MARKET_DEFAULTS.kd_gross
-  const de   = inputs.de_cible
+  // Cap D/E à 2.0 : évite un β_relevered aberrant quand les fonds propres sont négatifs ou très faibles
+  const de   = Math.min(Math.max(0, inputs.de_cible), 2.0)
 
   // Étape 2 : β_unlevered
   const beta_u = deleveredBeta(sector.beta_levered, sector.de_ratio, t)

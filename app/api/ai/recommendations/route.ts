@@ -45,20 +45,61 @@ export async function GET(request: Request) {
       const Anthropic = (await import("@anthropic-ai/sdk")).default
       const client = new Anthropic()
 
-      const latest = financials[0]
-      const prompt = `Tu es un expert en M&A et valorisation de PME françaises.
-Analyse les données suivantes et génère 4 recommandations stratégiques structurées.
+      const { calculateDCF } = await import("../../../dcf")
+      const sorted = [...financials].sort((a: any, b: any) => a.fiscal_year - b.fiscal_year)
+      const latest = sorted[sorted.length - 1]
+      const waccRate = wacc?.wacc ?? 0.095
+      const dcf = calculateDCF(sorted, { wacc: waccRate, terminal_growth_rate: 0.02, projection_years: 5 })
 
-Entreprise : ${company?.name} (${company?.sector})
-SIREN : ${company?.siren}
-Dernier exercice (${latest?.fiscal_year}) :
-- CA : ${latest?.revenue?.toLocaleString("fr-FR")} €
-- EBITDA : ${latest?.ebitda?.toLocaleString("fr-FR")} € (marge ${latest?.revenue ? ((latest.ebitda / latest.revenue) * 100).toFixed(1) : "?"}%)
-- Résultat net : ${latest?.net_income?.toLocaleString("fr-FR")} €
-- Dette nette : ${latest?.net_debt?.toLocaleString("fr-FR")} €
-- WACC : ${wacc ? (wacc.wacc * 100).toFixed(1) : "?"}%
+      const fmtM = (n: number | null | undefined): string => {
+        if (n == null) return "N/D"
+        const abs = Math.abs(n)
+        if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(1)} M€`
+        if (abs >= 1_000)     return `${Math.round(n / 1_000)} k€`
+        return `${Math.round(n)} €`
+      }
+      const fmtPct = (n: number | null | undefined): string =>
+        n != null ? `${(n * 100).toFixed(1)}%` : "N/D"
 
-Réponds UNIQUEMENT en JSON valide avec ce format exact :
+      const historique = sorted.map((f: any) => {
+        const mb = f.revenue ? ((f.ebitda ?? 0) / f.revenue * 100).toFixed(1) : "?"
+        const mn = f.revenue ? ((f.net_income ?? 0) / f.revenue * 100).toFixed(1) : "?"
+        return `  • ${f.fiscal_year} : CA ${fmtM(f.revenue)}, EBITDA ${fmtM(f.ebitda)} (marge ${mb}%), RN ${fmtM(f.net_income)} (marge ${mn}%), Dette nette ${fmtM(f.net_debt)}`
+      }).join("\n")
+
+      const prompt = `Tu es un expert en M&A et valorisation de PME françaises non cotées.
+Analyse les données financières et de valorisation suivantes, puis génère 6 recommandations stratégiques pertinentes et personnalisées.
+
+═══ ENTREPRISE ═══
+Nom : ${company?.name}
+Secteur : ${company?.sector}
+Forme juridique : ${company?.legal_form ?? "N/D"}
+SIREN : ${company?.siren ?? "N/D"}
+
+═══ HISTORIQUE FINANCIER ═══
+${historique}
+
+═══ WACC (scénario base) ═══
+- β désendetté : ${wacc?.beta_unlevered?.toFixed(3) ?? "N/D"} | β réendetté : ${wacc?.beta_relevered?.toFixed(3) ?? "N/D"}
+- Rf : ${fmtPct(wacc?.rf)} | ERP : ${fmtPct(wacc?.erp)} | Prime taille : ${fmtPct(wacc?.size_premium)} | Prime illiquidité : ${fmtPct(wacc?.illiquidity_premium)}
+- Ke : ${fmtPct(wacc?.ke)} | Kd net : ${fmtPct(wacc?.kd_net)}
+- WACC final : ${fmtPct(waccRate)}
+
+═══ VALORISATION DCF ═══
+- Enterprise Value (EV) : ${fmtM(dcf.enterpriseValue)}
+- Equity Value : ${fmtM(dcf.equityValue)}
+- Multiple implicite EV/EBITDA : ${latest?.ebitda ? (dcf.enterpriseValue / latest.ebitda).toFixed(1) + "x" : "N/D"}
+- CAGR CA historique : ${fmtPct(dcf.effectiveHyp.revenueGrowth)}
+- Marge EBITDA projetée : ${fmtPct(dcf.effectiveHyp.ebitdaMargin)}
+- FCF projetés (N+1 à N+5) : ${dcf.projectedFCFs.map(fmtM).join(" → ")}
+- PV FCFs : ${fmtM(dcf.sumPVFCF)} | PV Valeur terminale : ${fmtM(dcf.pvTerminalValue)}
+
+═══ INSTRUCTIONS ═══
+Génère exactement 6 recommandations couvrant : performance opérationnelle, structure financière, création de valeur, risques, gouvernance/transmission, axes de croissance.
+Chaque recommandation doit être concrète, chiffrée si possible, et directement liée aux données fournies.
+Évite les formulations génériques — cite les chiffres spécifiques de l'entreprise.
+
+Réponds UNIQUEMENT en JSON valide, sans texte avant ou après :
 {
   "recommendations": [
     { "category": "Opérationnel|Financier|Stratégique|Risques", "title": "...", "body": "...", "priority": "haute|moyenne|faible" }
@@ -67,7 +108,7 @@ Réponds UNIQUEMENT en JSON valide avec ce format exact :
 
       const message = await client.messages.create({
         model: "claude-opus-4-6",
-        max_tokens: 1024,
+        max_tokens: 2048,
         messages: [{ role: "user", content: prompt }]
       })
 

@@ -291,7 +291,7 @@ export async function GET(request: Request) {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
     const recoRes = await fetch(
       `${baseUrl}/api/ai/recommendations?company_id=${company_id}`,
-      { signal: AbortSignal.timeout(15000) }
+      { signal: AbortSignal.timeout(30000) }
     )
     if (recoRes.ok) {
       const recoData = await recoRes.json()
